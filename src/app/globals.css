@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  /* Bahath Jobz brand tokens — from bahathjobz.com */
+  --bahath-navy: #002b49;
+  --bahath-navy-dark: #001f36;
+  --bahath-cyan: #1db4ce;
+  --bahath-cyan-dark: #1799b3;
+  --bahath-foreground: #141f2e;
+  --bahath-muted: #6b7c93;
+  --bahath-border: #e2e8f0;
+  --bahath-accent-bg: #f4f7fa;
+  --background: #ffffff;
+  --foreground: var(--bahath-foreground);
+  --primary: var(--bahath-navy);
+  --secondary: var(--bahath-cyan);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-bahath-navy: var(--bahath-navy);
+  --color-bahath-navy-dark: var(--bahath-navy-dark);
+  --color-bahath-cyan: var(--bahath-cyan);
+  --color-bahath-cyan-dark: var(--bahath-cyan-dark);
+  --color-bahath-muted: var(--bahath-muted);
+  --color-bahath-border: var(--bahath-border);
+  --color-bahath-accent: var(--bahath-accent-bg);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), "Inter", system-ui, sans-serif;
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-inter), "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+@media print {
+  @page {
+    margin: 0.4in;
+    size: A4;
+  }
+
+  html,
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .site-header,
+  .site-footer,
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide everything, then reveal only the resume */
+  body * {
+    visibility: hidden;
+  }
+
+  #resume-print-area,
+  #resume-print-area * {
+    visibility: visible;
+  }
+
+  #resume-print-area {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: auto;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  .resume-template {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .resume-header {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .resume-contact-link {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}

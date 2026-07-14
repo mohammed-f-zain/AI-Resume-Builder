@@ -1,0 +1,26 @@
+---
+description: Project memory and conventions for AI Resume Builder
+alwaysApply: true
+---
+
+# AI Resume Builder — Agent Instructions
+
+## First Step Every Session
+
+1. Read `PROJECT_MEMORY.md` at the project root for full context
+2. After completing work, update `PROJECT_MEMORY.md` changelog and status tables
+
+## Conventions
+
+- Bilingual: all user-facing strings go in `src/lib/i18n/translations.ts`
+- Arabic locale uses RTL (`dir="rtl"` on html)
+- API keys only in `.env.local`, never committed
+- ATS prompts live in API route files under `src/app/api/`
+- Resume templates are React components in `src/components/resume/templates/`
+- Use existing UI components from `src/components/ui/`
+
+## Do Not
+
+- Commit `.env.local` or API keys
+- Break RTL layout for Arabic
+- Add resume templates without updating PROJECT_MEMORY.md template table
