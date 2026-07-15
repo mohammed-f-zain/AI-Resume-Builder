@@ -41,7 +41,7 @@ body {
 
 @media print {
   @page {
-    margin: 0.4in;
+    margin: 0.5in;
     size: A4;
   }
 
@@ -50,6 +50,8 @@ body {
     background: white !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -63,9 +65,10 @@ body {
   main {
     padding: 0 !important;
     margin: 0 !important;
+    overflow: visible !important;
   }
 
-  /* Hide everything, then reveal only the resume */
+  /* Hide chrome, reveal only the resume — absolute (not fixed) so all pages print */
   body * {
     visibility: hidden;
   }
@@ -76,10 +79,12 @@ body {
   }
 
   #resume-print-area {
-    position: fixed;
-    inset: 0;
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 100%;
-    height: auto;
+    height: auto !important;
+    max-height: none !important;
     border: none !important;
     border-radius: 0 !important;
     overflow: visible !important;
@@ -93,13 +98,20 @@ body {
     max-width: 100% !important;
     width: 100% !important;
     margin: 0 !important;
+    padding: 0 !important;
     box-shadow: none !important;
     overflow: visible !important;
+    height: auto !important;
   }
 
-  .resume-header {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  .resume-entry {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .resume-section-heading {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .resume-contact-link {

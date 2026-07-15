@@ -43,6 +43,8 @@ src/
 │   ├── cover-letter/page.tsx   # Cover letter generator
 │   └── api/
 │       ├── generate-resume/route.ts
+│       ├── resume-questions/route.ts
+│       ├── suggest-skills/route.ts
 │       ├── analyze-resume/route.ts
 │       └── generate-cover-letter/route.ts
 ├── components/
@@ -62,23 +64,39 @@ src/
 
 ## Resume Templates (5)
 
+All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts). Differentiation is via heading styles, divider colors, and fonts.
+
 | ID | Name | Style |
 |----|------|-------|
 | `classic` | Classic | Traditional single-column, serif headings |
-| `modern` | Modern | Two-tone header, clean sans-serif |
-| `minimal` | Minimal | Lots of whitespace, subtle dividers |
-| `executive` | Executive | Bold sidebar accent, professional |
-| `creative` | Creative | Color accent bar, contemporary layout |
+| `modern` | Modern | Sans typography, navy/cyan section lines (no fill backgrounds) |
+| `minimal` | Minimal | Lots of whitespace, light tracking headings |
+| `executive` | Executive | Bold navy accent bar + heavy section rules |
+| `creative` | Creative | Cyan accent headings + gradient top bar |
+
+### Fixed CV section order (all templates)
+
+1. Professional Summary  
+2. Professional Skills (Technical + Soft)  
+3. Professional Experience  
+4. Projects  
+5. Education  
+6. Certifications & Courses  
+7. Languages  
 
 ## API Endpoints
 
 ### POST `/api/generate-resume`
-- **Body:** `{ basics, answers, language }`
-- **Returns:** Structured `ResumeData` optimized for ATS
+- **Body:** `{ basics, answers, selectedSkills, language }`
+- **Returns:** Structured `ResumeData` optimized for ATS (skills as `{ technical, soft }`)
 
 ### POST `/api/resume-questions`
-- **Body:** `{ basics, language }`
+- **Body:** `{ basics, language }` — `basics.experience` required (position, company, dates)
 - **Returns:** `{ questions: InterviewQuestion[] }`
+
+### POST `/api/suggest-skills`
+- **Body:** `{ basics, answers, language }`
+- **Returns:** `{ skills: string[] }` — AI suggestions for multi-select
 
 ### POST `/api/analyze-resume`
 - **Body:** `FormData` with `file` (PDF or .docx)
@@ -109,22 +127,49 @@ src/
 - **Logo:** `/public/logo-white.png` (header), `/public/logo.png`
 - **RTL:** `dir="rtl"` on `<html>` when locale is `ar`
 
-## Resume Builder Flow (4 steps)
+## Resume Builder Flow (5 steps)
 
-1. **Your Info** — contact + target role + rough career background
-2. **AI Interview** — AI generates 5–7 personalized questions; user answers
-3. **Template** — pick from 5 ATS templates
-4. **Preview** — AI writes full resume content → preview + print
+1. **Your Info** — contact + target role + **mandatory professional experience** + **mandatory education** + optional languages + optional certificates (PDF/Word/image → CV links) + optional notes
+2. **AI Interview** — AI generates personalized questions using known experience/education (does not re-ask known facts)
+3. **Skills** — AI suggests skills from profile + answers; user multi-selects and can add custom skills
+4. **Template** — pick from 5 single-column ATS templates
+5. **Preview** — AI writes full resume → preview + print
 
 ### API: POST `/api/resume-questions`
 - **Body:** `{ basics, language }`
 - **Returns:** `{ questions: InterviewQuestion[] }`
 
-### API: POST `/api/generate-resume`
+### API: POST `/api/suggest-skills`
 - **Body:** `{ basics, answers, language }`
-- **Returns:** `{ resume: ResumeData }`
+- **Returns:** `{ skills: string[] }`
+
+### API: POST `/api/generate-resume`
+- **Body:** `{ basics, answers, selectedSkills, language }`
+- **Returns:** `{ resume: ResumeData }` — education/languages/certs from basics; cert `url` is uploaded file data URL when present
 
 ## Changelog
+
+### 2026-07-15 — Multi-page PDF + Modern template readability
+- Print/Download PDF now flows across multiple A4 pages (fixed positioning that clipped to page 1 removed)
+- Modern template: removed navy fill header; uses navy/cyan lines + typography only
+
+### 2026-07-15 — Template step live preview
+- Template step now shows a live CV preview from entered basics/skills (before AI generation)
+- Preview visible on all screen sizes; side-by-side layout on large screens
+
+### 2026-07-15 — Basics: Education, Languages, Certificate Uploads
+- Mandatory multi-entry Education (degree, institution, graduation month, optional GPA)
+- Optional Languages (name + proficiency)
+- Optional Certificates with PDF/Word/image upload; files stored as data URLs and rendered as clickable links on the CV
+- Generate-resume + questions APIs treat education/languages/certs as known data
+
+### 2026-07-15 — Builder: Experience + Skills + ATS Templates
+- Basics step: mandatory multi-entry Professional Experience (position, company, from/to, current)
+- New Skills step after interview: AI suggestions via `/api/suggest-skills`, multi-select + manual add
+- Experience data sent to questions + generate-resume prompts
+- All templates converted to single-column ATS layouts (executive sidebar removed)
+- Fixed CV section order: Summary → Skills (tech/soft) → Experience → Projects → Education → Certs → Languages
+- `ResumeData.skills` now `{ technical: string[]; soft: string[] }`
 
 ### 2026-07-13 — Multi-Resume Drafts
 - Multiple saved resumes in localStorage with switch/delete
@@ -147,6 +192,9 @@ src/
 - Added `/api/resume-questions` for personalized AI questions
 - Updated `/api/generate-resume` to use interview answers for AI-written content
 - Switched font to Inter to match bahathjobz.com
+
+### 2026-07-15 — Local OpenAI env
+- Created `.env.local` with `OPENAI_API_KEY` and `OPENAI_MODEL=gpt-4o-mini` (gitignored)
 
 ### 2026-07-13 — Initial Build
 - Scaffolded Next.js 16 + Tailwind v4 project

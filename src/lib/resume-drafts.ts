@@ -1,11 +1,21 @@
 import type {
+  CertificateEntry,
+  EducationEntry,
+  ExperienceEntry,
   InterviewQuestion,
+  LanguageEntry,
   ResumeBasics,
   ResumeData,
   TemplateId,
 } from "@/lib/types";
+import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
 
-export type BuilderStep = "basics" | "interview" | "template" | "preview";
+export type BuilderStep =
+  | "basics"
+  | "interview"
+  | "skills"
+  | "template"
+  | "preview";
 
 export interface ResumeDraft {
   id: string;
@@ -14,6 +24,8 @@ export interface ResumeDraft {
   basics: ResumeBasics;
   questions: InterviewQuestion[];
   answers: Record<string, string>;
+  suggestedSkills: string[];
+  selectedSkills: string[];
   template: TemplateId;
   step: BuilderStep;
   maxStepIndex: number;
@@ -27,6 +39,104 @@ export interface DraftStore {
 
 const STORAGE_KEY = "bahath-resume-builder-drafts";
 
+export const LANGUAGE_PROFICIENCIES = [
+  "Native",
+  "Fluent",
+  "Advanced",
+  "Intermediate",
+  "Basic",
+] as const;
+
+export function createEmptyExperience(): ExperienceEntry {
+  return {
+    id: crypto.randomUUID(),
+    position: "",
+    company: "",
+    startDate: "",
+    endDate: "",
+    current: false,
+  };
+}
+
+export function createEmptyEducation(): EducationEntry {
+  return {
+    id: crypto.randomUUID(),
+    degree: "",
+    institution: "",
+    graduationDate: "",
+    gpa: "",
+  };
+}
+
+export function createEmptyLanguage(): LanguageEntry {
+  return {
+    id: crypto.randomUUID(),
+    language: "",
+    proficiency: "Fluent",
+  };
+}
+
+export function createEmptyCertificate(): CertificateEntry {
+  return {
+    id: crypto.randomUUID(),
+    name: "",
+    fileName: "",
+    fileDataUrl: "",
+    mimeType: "",
+  };
+}
+
+export function normalizeExperience(
+  entries?: Partial<ExperienceEntry>[] | null
+): ExperienceEntry[] {
+  if (!entries?.length) return [createEmptyExperience()];
+  return entries.map((e) => ({
+    id: e.id || crypto.randomUUID(),
+    position: e.position ?? "",
+    company: e.company ?? "",
+    startDate: e.startDate ?? "",
+    endDate: e.endDate ?? "",
+    current: !!e.current,
+  }));
+}
+
+export function normalizeEducationEntries(
+  entries?: Partial<EducationEntry>[] | null
+): EducationEntry[] {
+  if (!entries?.length) return [createEmptyEducation()];
+  return entries.map((e) => ({
+    id: e.id || crypto.randomUUID(),
+    degree: e.degree ?? "",
+    institution: e.institution ?? "",
+    graduationDate: e.graduationDate ?? "",
+    gpa: e.gpa ?? "",
+  }));
+}
+
+export function normalizeLanguageEntries(
+  entries?: Partial<LanguageEntry>[] | null
+): LanguageEntry[] {
+  if (!entries) return [];
+  return entries.map((e) => ({
+    id: e.id || crypto.randomUUID(),
+    language: e.language ?? "",
+    proficiency: e.proficiency ?? "Fluent",
+  }));
+}
+
+export function normalizeCertificateEntries(
+  entries?: Partial<CertificateEntry>[] | null
+): CertificateEntry[] {
+  if (!entries) return [];
+  return entries.map((e) => ({
+    id: e.id || crypto.randomUUID(),
+    name: e.name ?? "",
+    fileName: e.fileName ?? "",
+    fileDataUrl: e.fileDataUrl ?? "",
+    mimeType: e.mimeType ?? "",
+  }));
+}
+
 export const emptyBasics: ResumeBasics = {
   fullName: "",
   email: "",
@@ -37,6 +147,10 @@ export const emptyBasics: ResumeBasics = {
   website: "",
   targetRole: "",
   careerBackground: "",
+  experience: [],
+  education: [],
+  languages: [],
+  certificates: [],
 };
 
 export function createEmptyDraft(): ResumeDraft {
@@ -46,9 +160,17 @@ export function createEmptyDraft(): ResumeDraft {
     id,
     name: "Untitled Resume",
     updatedAt: now,
-    basics: { ...emptyBasics },
+    basics: {
+      ...emptyBasics,
+      experience: [createEmptyExperience()],
+      education: [createEmptyEducation()],
+      languages: [],
+      certificates: [],
+    },
     questions: [],
     answers: {},
+    suggestedSkills: [],
+    selectedSkills: [],
     template: "modern",
     step: "basics",
     maxStepIndex: 0,
@@ -67,19 +189,43 @@ export function normalizeBasics(basics?: Partial<ResumeBasics>): ResumeBasics {
     website: basics?.website ?? "",
     targetRole: basics?.targetRole ?? "",
     careerBackground: basics?.careerBackground ?? "",
+    experience: normalizeExperience(basics?.experience),
+    education: normalizeEducationEntries(basics?.education),
+    languages: normalizeLanguageEntries(basics?.languages),
+    certificates: normalizeCertificateEntries(basics?.certificates),
   };
 }
 
+export function normalizeResume(resume: ResumeData | null): ResumeData | null {
+  if (!resume) return null;
+  return {
+    ...resume,
+    skills: normalizeResumeSkills(resume.skills),
+    certifications: normalizeCertifications(resume.certifications),
+  };
+}
+
+const VALID_STEPS: BuilderStep[] = [
+  "basics",
+  "interview",
+  "skills",
+  "template",
+  "preview",
+];
+
 export function normalizeDraft(draft: ResumeDraft): ResumeDraft {
+  const step = VALID_STEPS.includes(draft.step) ? draft.step : "basics";
   return {
     ...draft,
     basics: normalizeBasics(draft.basics),
     questions: draft.questions ?? [],
     answers: draft.answers ?? {},
+    suggestedSkills: draft.suggestedSkills ?? [],
+    selectedSkills: draft.selectedSkills ?? [],
     template: draft.template ?? "modern",
-    step: draft.step ?? "basics",
+    step,
     maxStepIndex: draft.maxStepIndex ?? 0,
-    resume: draft.resume ?? null,
+    resume: normalizeResume(draft.resume ?? null),
   };
 }
 
@@ -99,13 +245,48 @@ export function draftDisplayName(draft: ResumeDraft): string {
   return draft.name;
 }
 
+export function isExperienceComplete(entry: ExperienceEntry): boolean {
+  const hasEnd = entry.current || !!entry.endDate.trim();
+  return (
+    !!entry.position.trim() &&
+    !!entry.company.trim() &&
+    !!entry.startDate.trim() &&
+    hasEnd
+  );
+}
+
+export function hasValidExperience(basics: ResumeBasics): boolean {
+  return basics.experience.some(isExperienceComplete);
+}
+
+export function isEducationComplete(entry: EducationEntry): boolean {
+  return (
+    !!entry.degree.trim() &&
+    !!entry.institution.trim() &&
+    !!entry.graduationDate.trim()
+  );
+}
+
+export function hasValidEducation(basics: ResumeBasics): boolean {
+  return basics.education.some(isEducationComplete);
+}
+
 export function draftHasContent(draft: ResumeDraft): boolean {
   return (
     !!draft.basics.fullName ||
     !!draft.basics.email ||
     !!draft.basics.careerBackground ||
+    draft.basics.experience.some(
+      (e) => e.position.trim() || e.company.trim()
+    ) ||
+    draft.basics.education.some(
+      (e) => e.degree.trim() || e.institution.trim()
+    ) ||
+    draft.basics.languages.some((e) => e.language.trim()) ||
+    draft.basics.certificates.some((e) => e.name.trim()) ||
     draft.questions.length > 0 ||
     Object.values(draft.answers).some((a) => a.trim()) ||
+    draft.selectedSkills.length > 0 ||
     !!draft.resume
   );
 }
@@ -132,7 +313,15 @@ export function loadDraftStore(): DraftStore {
 }
 
 export function saveDraftStore(store: DraftStore): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  } catch (e) {
+    const message =
+      e instanceof DOMException && e.name === "QuotaExceededError"
+        ? "Storage full — try smaller certificate files (max ~1.5MB each)."
+        : "Failed to save draft";
+    throw new Error(message);
+  }
 }
 
 export function getActiveDraft(store: DraftStore): ResumeDraft {
@@ -211,10 +400,12 @@ export function migrateLegacyDraft(): DraftStore | null {
       basics: normalizeBasics(saved.basics),
       questions: saved.questions ?? [],
       answers: saved.answers ?? {},
+      suggestedSkills: saved.suggestedSkills ?? [],
+      selectedSkills: saved.selectedSkills ?? [],
       template: saved.template ?? "modern",
-      step: saved.step ?? "basics",
+      step: VALID_STEPS.includes(saved.step) ? saved.step : "basics",
       maxStepIndex: saved.maxStepIndex ?? 0,
-      resume: saved.resume ?? null,
+      resume: normalizeResume(saved.resume ?? null),
     };
 
     localStorage.removeItem(legacyKey);
