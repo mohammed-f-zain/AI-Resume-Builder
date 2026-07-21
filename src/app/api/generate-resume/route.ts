@@ -6,6 +6,7 @@ import type {
   ResumeData,
 } from "@/lib/types";
 import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
+import { formatLanguageEntry } from "@/lib/resume-drafts";
 
 /** Strip bulky file payloads before sending basics to the model. */
 function basicsForAI(basics: ResumeBasics): Omit<ResumeBasics, "certificates"> & {
@@ -121,7 +122,7 @@ ${certificateEntries.map((c) => `- ${c.name}`).join("\n") || "- (none provided)"
 
 9. **Languages** — use provided languages when present:
 ${languageEntries
-  .map((l) => `- ${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`)
+  .map((l) => `- ${formatLanguageEntry(l.language, l.proficiency, language)}`)
   .join("\n") || "- (none provided; include from answers if any)"}
 
 ## Additional rules
@@ -200,9 +201,7 @@ Return JSON matching this exact schema:
     // Authoritative languages from basics
     if (languageEntries.length) {
       resumeData.languages = languageEntries.map((l) =>
-        l.proficiency?.trim()
-          ? `${l.language.trim()} (${l.proficiency.trim()})`
-          : l.language.trim()
+        formatLanguageEntry(l.language, l.proficiency, language)
       );
     }
 

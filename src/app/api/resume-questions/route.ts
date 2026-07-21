@@ -34,7 +34,15 @@ export async function POST(request: Request) {
     const openai = getOpenAIClient();
     const langInstruction =
       language === "ar"
-        ? "Write all questions and placeholders in Arabic."
+        ? `Write ALL questions and placeholders in clear, natural Modern Standard Arabic (عربية فصحى مبسطة) for Qatar/GCC job seekers.
+
+Arabic quality rules:
+- Sound like a real Arabic career coach — NOT a word-for-word English translation
+- Use natural professional terms (خبرة، إنجازات قابلة للقياس، مسؤوليات، مشاريع، أدوات وتقنيات)
+- Placeholders must be concrete Arabic examples with metrics when useful
+- Keep well-known tool/brand names in English when needed (React, Excel, SAP)
+- Avoid awkward, literal, or mixed broken Arabic/English phrasing
+- Every question must be practical for the target role "${basics.targetRole}"`
         : "Write all questions and placeholders in English.";
 
     const experienceSummary = (basics.experience || [])

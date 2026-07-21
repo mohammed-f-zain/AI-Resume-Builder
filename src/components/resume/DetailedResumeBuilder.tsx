@@ -48,6 +48,7 @@ import {
   type DraftStore,
   type ResumeDraft,
   LANGUAGE_PROFICIENCIES,
+  languageProficiencyLabel,
   createEmptyCertificate,
   createEmptyEducation,
   createEmptyExperience,
@@ -1247,7 +1248,7 @@ export function DetailedResumeBuilder({
                         >
                           {LANGUAGE_PROFICIENCIES.map((p) => (
                             <option key={p} value={p}>
-                              {p}
+                              {languageProficiencyLabel(p, locale)}
                             </option>
                           ))}
                         </select>

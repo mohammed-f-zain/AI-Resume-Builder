@@ -58,6 +58,41 @@ export const LANGUAGE_PROFICIENCIES = [
   "Basic",
 ] as const;
 
+export type LanguageProficiency = (typeof LANGUAGE_PROFICIENCIES)[number];
+
+const PROFICIENCY_LABELS: Record<
+  LanguageProficiency,
+  { en: string; ar: string }
+> = {
+  Native: { en: "Native", ar: "لغة أم" },
+  Fluent: { en: "Fluent", ar: "طلاقة" },
+  Advanced: { en: "Advanced", ar: "متقدم" },
+  Intermediate: { en: "Intermediate", ar: "متوسط" },
+  Basic: { en: "Basic", ar: "أساسي" },
+};
+
+/** Localized label for a stored proficiency value (values stay English for consistency). */
+export function languageProficiencyLabel(
+  value: string,
+  locale: "en" | "ar"
+): string {
+  const key = value as LanguageProficiency;
+  if (PROFICIENCY_LABELS[key]) return PROFICIENCY_LABELS[key][locale];
+  return value;
+}
+
+/** Format "Language (Proficiency)" for CV text, localized when needed. */
+export function formatLanguageEntry(
+  language: string,
+  proficiency: string | undefined,
+  locale: "en" | "ar" = "en"
+): string {
+  const name = language.trim();
+  if (!name) return "";
+  if (!proficiency?.trim()) return name;
+  return `${name} (${languageProficiencyLabel(proficiency.trim(), locale)})`;
+}
+
 export function createEmptyExperience(): ExperienceEntry {
   return {
     id: crypto.randomUUID(),

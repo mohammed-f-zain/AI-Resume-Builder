@@ -44,6 +44,7 @@ import {
   type DraftStore,
   type ResumeDraft,
   LANGUAGE_PROFICIENCIES,
+  languageProficiencyLabel,
   createEmptyLanguage,
   deleteDraft,
   draftDisplayName,
@@ -878,7 +879,7 @@ export function GuidedResumeBuilder({
                         >
                           {LANGUAGE_PROFICIENCIES.map((p) => (
                             <option key={p} value={p}>
-                              {p}
+                              {languageProficiencyLabel(p, locale)}
                             </option>
                           ))}
                         </select>

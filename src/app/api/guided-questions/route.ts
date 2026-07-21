@@ -66,15 +66,36 @@ export async function POST(request: Request) {
     const openai = getOpenAIClient();
     const langInstruction =
       language === "ar"
-        ? "Write the question, options, and field labels in Arabic."
+        ? `Write ALL question text, choice options, and follow-up field labels in clear, natural Modern Standard Arabic (عربية فصحى مبسطة) for Qatar/GCC job seekers.
+
+Arabic quality rules:
+- Sound like a real Arabic career coach — NOT a word-for-word English translation
+- Use natural professional terms (e.g. خبرة عملية، مسمى وظيفي، جهة العمل، إنجازات قابلة للقياس، أدوات العمل)
+- Keep options short and clear in Arabic
+- Keep well-known tool/brand names in English when needed (Excel, React, SAP) inside Arabic sentences
+- Avoid awkward, literal, or mixed broken Arabic/English phrasing
+- Questions must be practical and make sense for someone applying to "${basics.targetRole}"`
         : "Write the question, options, and field labels in English.";
 
     const spokenLanguages = (basics.languages || [])
       .filter((l) => l.language?.trim())
       .map((l) =>
-        l.proficiency ? `${l.language} (${l.proficiency})` : l.language
+        l.proficiency
+          ? `${l.language} (${l.proficiency})`
+          : l.language
       )
       .join(", ");
+
+    const arabicQuestionExamples =
+      language === "ar"
+        ? `
+
+## Arabic question examples (style to follow)
+Good: "ما أنواع أعمال السباكة التي تمارسها غالباً؟" with options مثل: سكني / تجاري / صناعي
+Bad: awkward literal translations or redundant questions like "هل عملت في مشاريع سباكة؟" for a plumber
+Good soft-skills: "أي من المهارات التالية تعتمد عليها يومياً في عملك؟"
+Keep follow-up field labels in Arabic: جهة العمل، المسمى الوظيفي، تاريخ البداية، تاريخ النهاية`
+        : "";
 
     const completion = await openai.chat.completions.create({
       model: getModel(),
@@ -154,7 +175,7 @@ If CV essentials are covered enough:
 Hard limits:
 - Minimum ${Math.min(6, Math.max(1, 8 - asked.length))} more questions if under 6 asked so far (unless absurd).
 - Maximum 12 questions total — if already at 12, return done: true.
-- Never return an empty question when done is false.`,
+- Never return an empty question when done is false.${arabicQuestionExamples}`,
         },
         {
           role: "user",

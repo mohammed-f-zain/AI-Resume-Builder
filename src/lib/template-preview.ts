@@ -2,6 +2,7 @@ import type {
   ResumeBasics,
   ResumeData,
 } from "@/lib/types";
+import { formatLanguageEntry } from "@/lib/resume-drafts";
 
 /** Build a lightweight resume from basics for template-step live preview (before AI generation). */
 export function buildTemplatePreviewResume(
@@ -68,10 +69,6 @@ export function buildTemplatePreviewResume(
       })),
     languages: (basics.languages || [])
       .filter((l) => l.language?.trim())
-      .map((l) =>
-        l.proficiency?.trim()
-          ? `${l.language.trim()} (${l.proficiency.trim()})`
-          : l.language.trim()
-      ),
+      .map((l) => formatLanguageEntry(l.language, l.proficiency, locale)),
   };
 }
