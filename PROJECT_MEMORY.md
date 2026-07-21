@@ -17,7 +17,7 @@ Bilingual (English / Arabic) AI-powered resume builder with ATS optimization —
 - **Framework:** Next.js 16 (App Router), React 19, TypeScript
 - **Styling:** Tailwind CSS v4
 - **AI:** OpenAI API (`gpt-4o-mini` via `OPENAI_MODEL` env)
-- **File parsing:** `pdf-parse` (PDF), `mammoth` (Word .docx)
+- **File parsing:** `unpdf` (PDF, serverless-safe), `mammoth` (Word .docx)
 - **Icons:** lucide-react
 - **i18n:** Custom context (`LocaleProvider`) — EN + AR with RTL
 
@@ -44,13 +44,14 @@ src/
 │   └── api/
 │       ├── generate-resume/route.ts
 │       ├── resume-questions/route.ts
+│       ├── guided-questions/route.ts
 │       ├── suggest-skills/route.ts
 │       ├── analyze-resume/route.ts
 │       └── generate-cover-letter/route.ts
 ├── components/
 │   ├── layout/                 # Header, Footer, LocaleSwitcher
 │   ├── ui/                     # Button, Card, Input, etc.
-│   ├── resume/                 # Form, Preview, Templates
+│   ├── resume/                 # ResumeBuilder (mode picker), Guided + Detailed builders, Templates
 │   ├── analyzer/               # Uploader, Score display
 │   └── cover-letter/           # Cover letter form
 ├── lib/
@@ -68,27 +69,30 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 
 | ID | Name | Style |
 |----|------|-------|
-| `classic` | Classic | Traditional single-column, serif headings |
-| `modern` | Modern | Sans typography, navy/cyan section lines (no fill backgrounds) |
-| `minimal` | Minimal | Lots of whitespace, light tracking headings |
-| `executive` | Executive | Bold navy accent bar + heavy section rules |
-| `creative` | Creative | Cyan accent headings + gradient top bar |
+| `classic` | Classic | Closest to HR Qatar ATS: uppercase name, `Title — Company \| dates`, Core Competencies as `•` text |
+| `modern` | Modern | Same ATS structure; navy section underlines; two-line experience |
+| `minimal` | Minimal | Extra whitespace; same ATS rules |
+| `executive` | Executive | Closest to Executive ATS PDF: Executive Summary, bullet Core Competencies, `Title` + `Company \| Location \| Dates` |
+| `creative` | Creative | ATS structure with cyan section underlines only (no fill backgrounds) |
 
 ### Fixed CV section order (all templates)
 
-1. Professional Summary  
-2. Professional Skills (Technical + Soft)  
+1. Professional / Executive Summary  
+2. Core Competencies (skills)  
 3. Professional Experience  
 4. Projects  
 5. Education  
-6. Certifications & Courses  
+6. Certifications  
 7. Languages  
+
+Header (matching sample ATS PDFs): name, headline under name, `Location • Phone • Email • LinkedIn`, optional photo. No sidebars / colored fill headers.
 
 ## API Endpoints
 
 ### POST `/api/generate-resume`
 - **Body:** `{ basics, answers, selectedSkills, language }`
 - **Returns:** Structured `ResumeData` optimized for ATS (skills as `{ technical, soft }`)
+- Contact overwrite includes `headline` (from target role) and optional `photoDataUrl`
 
 ### POST `/api/resume-questions`
 - **Body:** `{ basics, language }` — `basics.experience` required (position, company, dates)
@@ -99,8 +103,9 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 - **Returns:** `{ skills: string[] }` — AI suggestions for multi-select
 
 ### POST `/api/analyze-resume`
-- **Body:** `FormData` with `file` (PDF or .docx)
-- **Returns:** `{ score, breakdown, suggestions, extractedText }`
+- **Body (file):** `FormData` with `file` (PDF or .docx) + optional `language`
+- **Body (text):** JSON `{ text, language }` — used by builder “Generate ATS Score”
+- **Returns:** `{ score, breakdown, suggestions, strengths, extractedText }`
 
 ### POST `/api/generate-cover-letter`
 - **Body:** `{ position, jobDescription, cvText, language }`
@@ -127,27 +132,58 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 - **Logo:** `/public/logo-white.png` (header), `/public/logo.png`
 - **RTL:** `dir="rtl"` on `<html>` when locale is `ar`
 
-## Resume Builder Flow (5 steps)
+## Resume Builder Flow
 
-1. **Your Info** — contact + target role + **mandatory professional experience** + **mandatory education** + optional languages + optional certificates (PDF/Word/image → CV links) + optional notes
-2. **AI Interview** — AI generates personalized questions using known experience/education (does not re-ask known facts)
-3. **Skills** — AI suggests skills from profile + answers; user multi-selects and can add custom skills
-4. **Template** — pick from 5 single-column ATS templates
-5. **Preview** — AI writes full resume → preview + print
+Users pick a writing mode first:
 
-### API: POST `/api/resume-questions`
+### Mode A — Quick Guided (`guided`)
+1. **Basics** — name, email, phone, location, optional links, optional photo, target job, optional spoken languages  
+2. **Choice interview** — AI generates yes/no, single-choice, and checkbox questions one-by-one (with conditional follow-up fields e.g. company/position)  
+3. **Template** → **Preview** (generate resume; edit content; Generate ATS Score)
+
+### Mode B — Detailed (`detailed`) — existing flow unchanged
+1. **Your Info** — contact + optional photo + experience + education + languages + certificates  
+2. **AI Interview** — free-text answers  
+3. **Skills** — AI suggestions multi-select  
+4. **Template** → **Preview** (edit content; Generate ATS Score)
+
+### API: POST `/api/guided-questions`
 - **Body:** `{ basics, language }`
-- **Returns:** `{ questions: InterviewQuestion[] }`
-
-### API: POST `/api/suggest-skills`
-- **Body:** `{ basics, answers, language }`
-- **Returns:** `{ skills: string[] }`
-
-### API: POST `/api/generate-resume`
-- **Body:** `{ basics, answers, selectedSkills, language }`
-- **Returns:** `{ resume: ResumeData }` — education/languages/certs from basics; cert `url` is uploaded file data URL when present
+- **Returns:** `{ questions: GuidedQuestion[] }` — choice/checkbox questions with optional followUps
 
 ## Changelog
+
+### 2026-07-21 — Fix PDF upload on Vercel (DOMMatrix)
+- Replaced `pdf-parse` with `unpdf` for PDF text extraction — `pdf-parse`/`pdfjs-dist` requires browser APIs (`DOMMatrix`) that fail on Vercel serverless
+- Affects ATS Analyzer and Cover Letter CV upload
+
+### 2026-07-21 — Templates matched to ATS PDF samples
+- Restyled all 5 templates to match HR Qatar + Executive ATS PDFs: left-aligned header, location-first `•` contact line, ALL CAPS underlined section headings, Core Competencies, two-line or inline experience formats
+- Removed decorative fill bars/gradients from templates for ATS parse safety
+
+### 2026-07-21 — Preview layout fix (ATS + Edit)
+- Fixed broken multi-column layout: editor/ATS results were incorrectly nested inside the action-button flex row
+- Preview actions use a 2-column grid so Regenerate and Generate ATS Score stay side-by-side
+- Compact ATS panel is a single stacked card under the buttons
+- Resume editor uses single-column fields with overflow guards for the sidebar width
+
+### 2026-07-15 — ATS PDF-style templates, photo, in-CV edit, ATS score from preview
+- Restyled all templates toward sample ATS PDFs: name + headline, `•` contact line, ALL CAPS section headings, `Title — Company | dates` experience lines
+- Optional personal photo upload on Guided + Detailed basics; rendered on all templates; stored as data URL
+- Preview: Edit Resume panel (add/edit/delete sections, bullets, skills, etc.); edits persist to My Resumes drafts
+- Opening a saved resume with generated content jumps to Preview for editing
+- “Generate ATS Score” on preview analyzes resume text via `/api/analyze-resume` JSON body; shared results UI with analyzer page
+
+### 2026-07-20 — Guided Q one-at-a-time + UX polish
+- Guided questions now generated sequentially from prior answers (role-specific, covers CV essentials)
+- Choice/checkbox options stacked full-width; every question includes Other
+- Nav “Resume Builder” returns to mode picker (`?select=1`)
+- Delete resume uses designed confirm modal (no browser alert)
+
+### 2026-07-20 — Dual CV writing modes
+- Mode picker: Quick Guided vs Detailed Builder
+- Guided flow: light basics + one-by-one MCQ/checkbox questions (`/api/guided-questions`) with conditional follow-ups
+- Detailed flow preserved as `DetailedResumeBuilder` (previous wizard unchanged)
 
 ### 2026-07-15 — Multi-page PDF + Modern template readability
 - Print/Download PDF now flows across multiple A4 pages (fixed positioning that clipped to page 1 removed)

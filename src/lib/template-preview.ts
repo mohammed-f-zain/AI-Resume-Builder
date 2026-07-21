@@ -31,6 +31,8 @@ export function buildTemplatePreviewResume(
       linkedin: basics.linkedin || undefined,
       github: basics.github || undefined,
       website: basics.website || undefined,
+      headline: basics.targetRole || undefined,
+      photoDataUrl: basics.photoDataUrl || undefined,
     },
     summary,
     skills: {

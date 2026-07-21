@@ -11,7 +11,7 @@ import type { Locale } from "@/lib/types";
 
 const navItems: { href: string; key: TranslationKey }[] = [
   { href: "/", key: "home" },
-  { href: "/builder", key: "builder" },
+  { href: "/builder?select=1", key: "builder" },
   { href: "/analyzer", key: "analyzer" },
   { href: "/cover-letter", key: "coverLetter" },
 ];
@@ -47,7 +47,8 @@ export function Header() {
               href={item.href}
               className={cn(
                 "rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
-                pathname === item.href
+                pathname === item.href ||
+                (item.key === "builder" && pathname.startsWith("/builder"))
                   ? "bg-white/15 text-white"
                   : "text-white/80 hover:bg-white/10 hover:text-white"
               )}
@@ -89,7 +90,8 @@ export function Header() {
               onClick={() => setMobileOpen(false)}
               className={cn(
                 "block rounded-lg px-3 py-2.5 text-sm font-medium",
-                pathname === item.href
+                pathname === item.href ||
+                  (item.key === "builder" && pathname.startsWith("/builder"))
                   ? "bg-white/15 text-white"
                   : "text-white/80 hover:bg-white/10"
               )}
@@ -125,7 +127,7 @@ export function Footer() {
             © {new Date().getFullYear()} Bahath Jobz. Doha, Qatar.
           </p>
           <div className="flex gap-4 text-sm text-[#6b7c93]">
-            <Link href="/builder" className="hover:text-[#1db4ce]">
+            <Link href="/builder?select=1" className="hover:text-[#1db4ce]">
               {t("builder")}
             </Link>
             <Link href="/analyzer" className="hover:text-[#1db4ce]">

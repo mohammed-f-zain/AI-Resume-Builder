@@ -10,6 +10,10 @@ export interface ContactInfo {
   linkedin?: string;
   github?: string;
   website?: string;
+  /** Job title / headline shown under the name (ATS PDF style). */
+  headline?: string;
+  /** Optional personal photo as a data URL (shown on CV when provided). */
+  photoDataUrl?: string;
 }
 
 export interface Experience {
@@ -124,6 +128,8 @@ export interface ResumeBasics {
   website?: string;
   targetRole: string;
   careerBackground: string;
+  /** Optional personal photo (data URL) to place on the generated CV. */
+  photoDataUrl?: string;
   experience: ExperienceEntry[];
   education: EducationEntry[];
   languages: LanguageEntry[];
@@ -149,6 +155,60 @@ export interface InterviewAnswer {
   questionId: string;
   answer: string;
 }
+
+/** Quick guided builder: choice-based questions with optional follow-up fields. */
+export type GuidedQuestionType = "yes_no" | "single_choice" | "multi_choice";
+
+export interface GuidedFollowUpField {
+  id: string;
+  label: string;
+  inputType: "text" | "month";
+  required?: boolean;
+}
+
+export interface GuidedFollowUp {
+  /** Show follow-up when answer matches (e.g. "yes", or a specific option id/label). */
+  showWhen: string;
+  fields: GuidedFollowUpField[];
+  /** Allow adding multiple field groups (e.g. multiple jobs). */
+  allowMultiple?: boolean;
+}
+
+export interface GuidedQuestion {
+  id: string;
+  question: string;
+  type: GuidedQuestionType;
+  /** Options for single_choice / multi_choice (ignored for yes_no). */
+  options?: string[];
+  allowOther?: boolean;
+  followUp?: GuidedFollowUp;
+  category?:
+    | "experience"
+    | "skills"
+    | "education"
+    | "achievements"
+    | "projects"
+    | "technologies"
+    | "certifications"
+    | "general";
+}
+
+export interface GuidedFieldGroup {
+  id: string;
+  values: Record<string, string>;
+}
+
+export interface GuidedAnswer {
+  /** yes_no / single_choice selected value */
+  choice?: string;
+  /** multi_choice selected values */
+  choices?: string[];
+  otherText?: string;
+  /** Follow-up field groups (one or more when allowMultiple). */
+  fieldGroups?: GuidedFieldGroup[];
+}
+
+export type BuilderMode = "guided" | "detailed";
 
 export interface ATSBreakdown {
   formatting: number;

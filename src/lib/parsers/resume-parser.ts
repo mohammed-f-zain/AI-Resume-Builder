@@ -1,4 +1,5 @@
 import mammoth from "mammoth";
+import { extractText, getDocumentProxy } from "unpdf";
 
 export async function parseResumeFile(
   buffer: Buffer,
@@ -8,13 +9,14 @@ export async function parseResumeFile(
   const ext = fileName.toLowerCase().split(".").pop();
 
   if (mimeType === "application/pdf" || ext === "pdf") {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: buffer });
+    // unpdf: serverless-safe PDF.js (no DOMMatrix / canvas — works on Vercel)
+    const pdf = await getDocumentProxy(new Uint8Array(buffer));
     try {
-      const result = await parser.getText();
-      return result.text.trim();
+      const { text } = await extractText(pdf, { mergePages: true });
+      const combined = Array.isArray(text) ? text.join("\n") : text;
+      return (combined || "").trim();
     } finally {
-      await parser.destroy();
+      await pdf.destroy().catch(() => undefined);
     }
   }
 

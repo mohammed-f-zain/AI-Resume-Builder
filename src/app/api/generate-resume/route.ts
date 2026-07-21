@@ -226,6 +226,14 @@ Return JSON matching this exact schema:
       linkedin: basics.linkedin || resumeData.contact?.linkedin,
       github: basics.github || resumeData.contact?.github,
       website: basics.website || resumeData.contact?.website,
+      headline:
+        (typeof basics.targetRole === "string" && basics.targetRole.trim()) ||
+        resumeData.contact?.headline ||
+        undefined,
+      photoDataUrl:
+        (typeof basics.photoDataUrl === "string" && basics.photoDataUrl.trim()) ||
+        resumeData.contact?.photoDataUrl ||
+        undefined,
     };
 
     return NextResponse.json({ resume: resumeData });

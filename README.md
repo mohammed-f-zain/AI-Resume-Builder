@@ -31,4 +31,4 @@ See [`PROJECT_MEMORY.md`](./PROJECT_MEMORY.md) for full architecture, changelog,
 
 ## Tech Stack
 
-Next.js 16 · React 19 · Tailwind CSS · OpenAI · pdf-parse · mammoth
+Next.js 16 · React 19 · Tailwind CSS · OpenAI · unpdf · mammoth

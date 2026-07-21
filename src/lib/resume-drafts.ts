@@ -2,11 +2,14 @@ import type {
   CertificateEntry,
   EducationEntry,
   ExperienceEntry,
+  GuidedAnswer,
+  GuidedQuestion,
   InterviewQuestion,
   LanguageEntry,
   ResumeBasics,
   ResumeData,
   TemplateId,
+  BuilderMode,
 } from "@/lib/types";
 import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
 
@@ -15,15 +18,23 @@ export type BuilderStep =
   | "interview"
   | "skills"
   | "template"
-  | "preview";
+  | "preview"
+  | "mode";
+
+export type GuidedBuilderStep = "basics" | "interview" | "template" | "preview";
 
 export interface ResumeDraft {
   id: string;
   name: string;
   updatedAt: string;
+  /** null until user picks Quick or Detailed */
+  mode: BuilderMode | null;
   basics: ResumeBasics;
   questions: InterviewQuestion[];
   answers: Record<string, string>;
+  guidedQuestions: GuidedQuestion[];
+  guidedAnswers: Record<string, GuidedAnswer>;
+  guidedQuestionIndex: number;
   suggestedSkills: string[];
   selectedSkills: string[];
   template: TemplateId;
@@ -147,6 +158,7 @@ export const emptyBasics: ResumeBasics = {
   website: "",
   targetRole: "",
   careerBackground: "",
+  photoDataUrl: "",
   experience: [],
   education: [],
   languages: [],
@@ -160,6 +172,7 @@ export function createEmptyDraft(): ResumeDraft {
     id,
     name: "Untitled Resume",
     updatedAt: now,
+    mode: null,
     basics: {
       ...emptyBasics,
       experience: [createEmptyExperience()],
@@ -169,10 +182,13 @@ export function createEmptyDraft(): ResumeDraft {
     },
     questions: [],
     answers: {},
+    guidedQuestions: [],
+    guidedAnswers: {},
+    guidedQuestionIndex: 0,
     suggestedSkills: [],
     selectedSkills: [],
     template: "modern",
-    step: "basics",
+    step: "mode",
     maxStepIndex: 0,
     resume: null,
   };
@@ -189,6 +205,7 @@ export function normalizeBasics(basics?: Partial<ResumeBasics>): ResumeBasics {
     website: basics?.website ?? "",
     targetRole: basics?.targetRole ?? "",
     careerBackground: basics?.careerBackground ?? "",
+    photoDataUrl: basics?.photoDataUrl ?? "",
     experience: normalizeExperience(basics?.experience),
     education: normalizeEducationEntries(basics?.education),
     languages: normalizeLanguageEntries(basics?.languages),
@@ -206,6 +223,7 @@ export function normalizeResume(resume: ResumeData | null): ResumeData | null {
 }
 
 const VALID_STEPS: BuilderStep[] = [
+  "mode",
   "basics",
   "interview",
   "skills",
@@ -214,16 +232,40 @@ const VALID_STEPS: BuilderStep[] = [
 ];
 
 export function normalizeDraft(draft: ResumeDraft): ResumeDraft {
-  const step = VALID_STEPS.includes(draft.step) ? draft.step : "basics";
+  const mode =
+    draft.mode === "guided" || draft.mode === "detailed" ? draft.mode : null;
+  const step = VALID_STEPS.includes(draft.step)
+    ? draft.step
+    : mode
+      ? "basics"
+      : "mode";
+
+  // Explicit mode picker (Change writing mode / nav select) — do not re-infer.
+  // Legacy drafts with no mode still get inferred from content when not on picker.
+  const inferredMode =
+    mode ??
+    (step === "mode"
+      ? null
+      : draft.questions?.length || draft.resume
+        ? "detailed"
+        : draft.guidedQuestions?.length
+          ? "guided"
+          : null);
+
   return {
     ...draft,
+    mode: inferredMode,
     basics: normalizeBasics(draft.basics),
     questions: draft.questions ?? [],
     answers: draft.answers ?? {},
+    guidedQuestions: draft.guidedQuestions ?? [],
+    guidedAnswers: draft.guidedAnswers ?? {},
+    guidedQuestionIndex: draft.guidedQuestionIndex ?? 0,
     suggestedSkills: draft.suggestedSkills ?? [],
     selectedSkills: draft.selectedSkills ?? [],
     template: draft.template ?? "modern",
-    step,
+    // Only coerce step away from "mode" when a mode is already chosen
+    step: inferredMode && step === "mode" ? "basics" : step,
     maxStepIndex: draft.maxStepIndex ?? 0,
     resume: normalizeResume(draft.resume ?? null),
   };
@@ -273,6 +315,7 @@ export function hasValidEducation(basics: ResumeBasics): boolean {
 
 export function draftHasContent(draft: ResumeDraft): boolean {
   return (
+    !!draft.mode ||
     !!draft.basics.fullName ||
     !!draft.basics.email ||
     !!draft.basics.careerBackground ||
@@ -285,9 +328,19 @@ export function draftHasContent(draft: ResumeDraft): boolean {
     draft.basics.languages.some((e) => e.language.trim()) ||
     draft.basics.certificates.some((e) => e.name.trim()) ||
     draft.questions.length > 0 ||
+    draft.guidedQuestions.length > 0 ||
     Object.values(draft.answers).some((a) => a.trim()) ||
+    Object.keys(draft.guidedAnswers).length > 0 ||
     draft.selectedSkills.length > 0 ||
     !!draft.resume
+  );
+}
+
+export function hasValidGuidedBasics(basics: ResumeBasics): boolean {
+  return (
+    !!basics.fullName.trim() &&
+    !!basics.email.trim() &&
+    !!basics.targetRole.trim()
   );
 }
 
@@ -388,25 +441,16 @@ export function migrateLegacyDraft(): DraftStore | null {
     const raw = localStorage.getItem(legacyKey);
     if (!raw) return null;
 
-    const saved = JSON.parse(raw) as Omit<ResumeDraft, "id" | "name" | "updatedAt">;
-    const draft: ResumeDraft = {
+    const saved = JSON.parse(raw) as Partial<ResumeDraft>;
+    const draft = normalizeDraft({
+      ...createEmptyDraft(),
+      ...saved,
       id: crypto.randomUUID(),
-      name: draftDisplayName({
-        ...createEmptyDraft(),
-        ...saved,
-        basics: normalizeBasics(saved.basics),
-      }),
+      name: "Untitled Resume",
       updatedAt: new Date().toISOString(),
       basics: normalizeBasics(saved.basics),
-      questions: saved.questions ?? [],
-      answers: saved.answers ?? {},
-      suggestedSkills: saved.suggestedSkills ?? [],
-      selectedSkills: saved.selectedSkills ?? [],
-      template: saved.template ?? "modern",
-      step: VALID_STEPS.includes(saved.step) ? saved.step : "basics",
-      maxStepIndex: saved.maxStepIndex ?? 0,
-      resume: normalizeResume(saved.resume ?? null),
-    };
+    } as ResumeDraft);
+    draft.name = draftDisplayName(draft);
 
     localStorage.removeItem(legacyKey);
     const store: DraftStore = { activeId: draft.id, drafts: [draft] };
@@ -416,4 +460,87 @@ export function migrateLegacyDraft(): DraftStore | null {
     localStorage.removeItem(legacyKey);
     return null;
   }
+}
+
+/** Format guided answers into text Q&A for the generate-resume API. */
+export function guidedAnswersToInterviewAnswers(
+  questions: GuidedQuestion[],
+  answers: Record<string, GuidedAnswer>
+): { questionId: string; answer: string }[] {
+  return questions.map((q) => {
+    const a = answers[q.id];
+    if (!a) return { questionId: q.id, answer: "" };
+    const parts: string[] = [];
+    if (q.type === "multi_choice") {
+      const picks = [...(a.choices || [])];
+      if (a.otherText?.trim()) picks.push(`Other: ${a.otherText.trim()}`);
+      parts.push(picks.join(", ") || "");
+    } else {
+      parts.push(a.choice || "");
+      if (a.otherText?.trim()) parts.push(`Other: ${a.otherText.trim()}`);
+    }
+    if (a.fieldGroups?.length) {
+      a.fieldGroups.forEach((g, i) => {
+        const fields = Object.entries(g.values)
+          .filter(([, v]) => v?.trim())
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ");
+        if (fields) parts.push(`Entry ${i + 1}: ${fields}`);
+      });
+    }
+    return { questionId: q.id, answer: parts.filter(Boolean).join(". ") };
+  });
+}
+
+/** Pull experience + skills from guided answers into basics/skills for generation. */
+export function extractFromGuidedAnswers(
+  questions: GuidedQuestion[],
+  answers: Record<string, GuidedAnswer>
+): { experience: ExperienceEntry[]; selectedSkills: string[] } {
+  const experience: ExperienceEntry[] = [];
+  const selectedSkills: string[] = [];
+
+  for (const q of questions) {
+    const a = answers[q.id];
+    if (!a) continue;
+
+    if (q.type === "multi_choice" && (q.category === "technologies" || q.category === "skills")) {
+      selectedSkills.push(...(a.choices || []));
+      if (a.otherText?.trim()) {
+        a.otherText
+          .split(/[,،]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((s) => selectedSkills.push(s));
+      }
+    }
+
+    if (a.fieldGroups?.length) {
+      for (const g of a.fieldGroups) {
+        const v = g.values;
+        const company = (v.company || v.companyName || "").trim();
+        const position = (v.position || v.title || v.jobTitle || "").trim();
+        const startDate = (v.startDate || v.from || "").trim();
+        const endDate = (v.endDate || v.to || "").trim();
+        const current =
+          (v.current || "").toLowerCase() === "true" ||
+          (v.current || "").toLowerCase() === "yes";
+        if (company || position) {
+          experience.push({
+            id: g.id || crypto.randomUUID(),
+            company,
+            position,
+            startDate,
+            endDate,
+            current,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    experience: experience.length ? experience : [createEmptyExperience()],
+    selectedSkills: [...new Set(selectedSkills)],
+  };
 }
