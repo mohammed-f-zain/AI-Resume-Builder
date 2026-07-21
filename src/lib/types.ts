@@ -233,39 +233,40 @@ export interface CoverLetterResult {
   missingKeywords?: string[];
 }
 
-/** Normalize AI/legacy skills into soft + technical. */
+/** Normalize AI/legacy skills into soft + technical. Keeps empty placeholders for the editor. */
 export function normalizeResumeSkills(
   skills: ResumeSkills | string[] | undefined | null
 ): ResumeSkills {
   if (!skills) return { technical: [], soft: [] };
   if (Array.isArray(skills)) {
-    return { technical: skills.filter(Boolean), soft: [] };
+    return { technical: [...skills], soft: [] };
   }
   return {
-    technical: Array.isArray(skills.technical) ? skills.technical.filter(Boolean) : [],
-    soft: Array.isArray(skills.soft) ? skills.soft.filter(Boolean) : [],
+    technical: Array.isArray(skills.technical) ? [...skills.technical] : [],
+    soft: Array.isArray(skills.soft) ? [...skills.soft] : [],
   };
 }
 
 export function hasAnySkills(skills: ResumeSkills | string[] | undefined | null): boolean {
   const n = normalizeResumeSkills(skills);
-  return n.technical.length > 0 || n.soft.length > 0;
+  return (
+    n.technical.some((s) => s.trim().length > 0) ||
+    n.soft.some((s) => s.trim().length > 0)
+  );
 }
 
-/** Normalize AI/legacy certifications into name + optional url. */
+/** Normalize AI/legacy certifications into name + optional url. Keeps empty rows for the editor. */
 export function normalizeCertifications(
   certs: (CertificationItem | string)[] | undefined | null
 ): CertificationItem[] {
   if (!certs?.length) return [];
-  return certs
-    .map((c) => {
-      if (typeof c === "string") {
-        const name = c.trim();
-        return name ? { name } : null;
-      }
-      const name = (c.name ?? "").trim();
-      if (!name) return null;
-      return { name, url: c.url?.trim() || undefined };
-    })
-    .filter((c): c is CertificationItem => !!c);
+  return certs.map((c) => {
+    if (typeof c === "string") {
+      return { name: c };
+    }
+    return {
+      name: c.name ?? "",
+      url: c.url?.trim() || undefined,
+    };
+  });
 }

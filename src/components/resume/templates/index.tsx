@@ -360,8 +360,10 @@ function CertificationsSection({
   labels: Labels;
   Heading: ComponentType<{ children: ReactNode }>;
 }) {
-  const certs = normalizeCertifications(data.certifications);
-  const courses = data.courses ?? [];
+  const certs = normalizeCertifications(data.certifications).filter((c) =>
+    c.name.trim()
+  );
+  const courses = (data.courses ?? []).filter((c) => c.trim());
   if (!certs.length && !courses.length) return null;
 
   return (
@@ -402,10 +404,12 @@ function LanguagesSection({
   Heading: ComponentType<{ children: ReactNode }>;
 }) {
   if (!data.languages?.length) return null;
+  const langs = data.languages.filter((l) => l.trim());
+  if (!langs.length) return null;
   return (
     <section className="mb-4">
       <Heading>{labels.languages}</Heading>
-      <p className="text-[13px] text-slate-800">{data.languages.join(" • ")}</p>
+      <p className="text-[13px] text-slate-800">{langs.join(" • ")}</p>
     </section>
   );
 }
@@ -426,9 +430,10 @@ function SkillsSection({
   const skills = normalizeResumeSkills(data.skills);
   if (!hasAnySkills(skills)) return null;
 
-  const all = [...skills.technical, ...skills.soft].filter(Boolean);
+  const all = [...skills.technical, ...skills.soft].filter((s) => s.trim());
 
   if (asCompetencies) {
+    if (!all.length) return null;
     return (
       <section className="mb-4">
         <Heading>{labels.coreCompetencies}</Heading>
@@ -448,19 +453,23 @@ function SkillsSection({
     );
   }
 
+  const technical = skills.technical.filter((s) => s.trim());
+  const soft = skills.soft.filter((s) => s.trim());
+  if (!technical.length && !soft.length) return null;
+
   return (
     <section className="mb-4">
       <Heading>{labels.skills}</Heading>
-      {skills.technical.length > 0 && (
+      {technical.length > 0 && (
         <p className="mb-1 text-[13px] text-slate-800">
           <span className="font-semibold">{labels.technicalSkills}: </span>
-          {skills.technical.join(" • ")}
+          {technical.join(" • ")}
         </p>
       )}
-      {skills.soft.length > 0 && (
+      {soft.length > 0 && (
         <p className="text-[13px] text-slate-800">
           <span className="font-semibold">{labels.softSkills}: </span>
-          {skills.soft.join(" • ")}
+          {soft.join(" • ")}
         </p>
       )}
     </section>

@@ -18,6 +18,8 @@ import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
 interface ResumeEditorProps {
   data: ResumeData;
   onChange: (next: ResumeData) => void;
+  onDone: () => void;
+  onCancel: () => void;
 }
 
 function emptyExperience(): Experience {
@@ -50,13 +52,31 @@ function emptyProject(): Project {
   };
 }
 
-export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
+export function ResumeEditor({
+  data,
+  onChange,
+  onDone,
+  onCancel,
+}: ResumeEditorProps) {
   const { t } = useLocale();
   const skills = normalizeResumeSkills(data.skills);
   const certs = normalizeCertifications(data.certifications);
+  const experience = Array.isArray(data.experience) ? data.experience : [];
+  const education = Array.isArray(data.education) ? data.education : [];
+  const projects = Array.isArray(data.projects) ? data.projects : [];
+  const languages = Array.isArray(data.languages) ? data.languages : [];
 
   const patch = (partial: Partial<ResumeData>) => {
-    onChange({ ...data, ...partial });
+    onChange({
+      ...data,
+      experience,
+      education,
+      projects,
+      languages,
+      certifications: certs,
+      skills,
+      ...partial,
+    });
   };
 
   const updateContact = <K extends keyof ResumeData["contact"]>(
@@ -67,21 +87,21 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
   };
 
   const updateExperience = (index: number, next: Experience) => {
-    const experience = [...(data.experience || [])];
-    experience[index] = next;
-    patch({ experience });
+    const list = [...experience];
+    list[index] = next;
+    patch({ experience: list });
   };
 
   const updateEducation = (index: number, next: Education) => {
-    const education = [...(data.education || [])];
-    education[index] = next;
-    patch({ education });
+    const list = [...education];
+    list[index] = next;
+    patch({ education: list });
   };
 
   const updateProject = (index: number, next: Project) => {
-    const projects = [...(data.projects || [])];
-    projects[index] = next;
-    patch({ projects });
+    const list = [...projects];
+    list[index] = next;
+    patch({ projects: list });
   };
 
   const updateSkillList = (kind: "technical" | "soft", list: string[]) => {
@@ -95,8 +115,16 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
 
   return (
     <Card className="no-print min-w-0 overflow-hidden">
-      <CardHeader className="pb-3">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
         <CardTitle>{t("editResume")}</CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            {t("cancelEdit")}
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onDone}>
+            {t("doneEditing")}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="max-h-[min(70vh,720px)] space-y-6 overflow-y-auto overflow-x-hidden pr-1">
         <section className="space-y-3">
@@ -197,21 +225,22 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label className="text-base">{t("workExperience")}</Label>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="shrink-0"
               onClick={() =>
-                patch({ experience: [...(data.experience || []), emptyExperience()] })
+                patch({ experience: [...experience, emptyExperience()] })
               }
             >
               <Plus className="h-4 w-4" />
               {t("add")}
             </Button>
           </div>
-          {(data.experience || []).map((exp, i) => (
+          {experience.map((exp, i) => (
             <div
               key={i}
               className="space-y-2 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/40 p-3"
@@ -223,7 +252,7 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                   variant="ghost"
                   onClick={() =>
                     patch({
-                      experience: data.experience.filter((_, idx) => idx !== i),
+                      experience: experience.filter((_, idx) => idx !== i),
                     })
                   }
                 >
@@ -300,7 +329,7 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                       className="min-w-0 flex-1"
                       value={bullet}
                       onChange={(e) => {
-                        const bullets = [...exp.bullets];
+                        const bullets = [...(exp.bullets || [])];
                         bullets[j] = e.target.value;
                         updateExperience(i, { ...exp, bullets });
                       }}
@@ -311,7 +340,9 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                       variant="ghost"
                       className="shrink-0"
                       onClick={() => {
-                        const bullets = exp.bullets.filter((_, idx) => idx !== j);
+                        const bullets = (exp.bullets || []).filter(
+                          (_, idx) => idx !== j
+                        );
                         updateExperience(i, {
                           ...exp,
                           bullets: bullets.length ? bullets : [""],
@@ -342,21 +373,22 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label className="text-base">{t("education")}</Label>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="shrink-0"
               onClick={() =>
-                patch({ education: [...(data.education || []), emptyEducation()] })
+                patch({ education: [...education, emptyEducation()] })
               }
             >
               <Plus className="h-4 w-4" />
               {t("add")}
             </Button>
           </div>
-          {(data.education || []).map((edu, i) => (
+          {education.map((edu, i) => (
             <div
               key={i}
               className="space-y-2 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/40 p-3"
@@ -368,7 +400,7 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                   variant="ghost"
                   onClick={() =>
                     patch({
-                      education: data.education.filter((_, idx) => idx !== i),
+                      education: education.filter((_, idx) => idx !== i),
                     })
                   }
                 >
@@ -422,21 +454,20 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label className="text-base">{t("projects")}</Label>
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() =>
-                patch({ projects: [...(data.projects || []), emptyProject()] })
-              }
+              className="shrink-0"
+              onClick={() => patch({ projects: [...projects, emptyProject()] })}
             >
               <Plus className="h-4 w-4" />
               {t("add")}
             </Button>
           </div>
-          {(data.projects || []).map((project, i) => (
+          {projects.map((project, i) => (
             <div
               key={i}
               className="space-y-2 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/40 p-3"
@@ -448,7 +479,7 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                   variant="ghost"
                   onClick={() =>
                     patch({
-                      projects: (data.projects || []).filter((_, idx) => idx !== i),
+                      projects: projects.filter((_, idx) => idx !== i),
                     })
                   }
                 >
@@ -525,15 +556,19 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label className="text-base">{t("certifications")}</Label>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="shrink-0"
               onClick={() =>
                 patch({
-                  certifications: [...certs, { name: "" } satisfies CertificationItem],
+                  certifications: [
+                    ...certs,
+                    { name: "" } satisfies CertificationItem,
+                  ],
                 })
               }
             >
@@ -575,23 +610,21 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
               size="sm"
               variant="outline"
               className="shrink-0"
-              onClick={() =>
-                patch({ languages: [...(data.languages || []), ""] })
-              }
+              onClick={() => patch({ languages: [...languages, ""] })}
             >
               <Plus className="h-4 w-4" />
               {t("add")}
             </Button>
           </div>
-          {(data.languages || []).map((lang, i) => (
+          {languages.map((lang, i) => (
             <div key={i} className="flex min-w-0 gap-2">
               <Input
                 className="min-w-0 flex-1"
                 value={lang}
                 onChange={(e) => {
-                  const languages = [...(data.languages || [])];
-                  languages[i] = e.target.value;
-                  patch({ languages });
+                  const next = [...languages];
+                  next[i] = e.target.value;
+                  patch({ languages: next });
                 }}
               />
               <Button
@@ -601,7 +634,7 @@ export function ResumeEditor({ data, onChange }: ResumeEditorProps) {
                 className="shrink-0"
                 onClick={() =>
                   patch({
-                    languages: (data.languages || []).filter((_, idx) => idx !== i),
+                    languages: languages.filter((_, idx) => idx !== i),
                   })
                 }
               >

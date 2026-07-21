@@ -217,6 +217,10 @@ export function normalizeResume(resume: ResumeData | null): ResumeData | null {
   if (!resume) return null;
   return {
     ...resume,
+    experience: Array.isArray(resume.experience) ? resume.experience : [],
+    education: Array.isArray(resume.education) ? resume.education : [],
+    projects: Array.isArray(resume.projects) ? resume.projects : [],
+    languages: Array.isArray(resume.languages) ? resume.languages : [],
     skills: normalizeResumeSkills(resume.skills),
     certifications: normalizeCertifications(resume.certifications),
   };

@@ -185,6 +185,7 @@ export function DetailedResumeBuilder({
   const [customSkill, setCustomSkill] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [editingResume, setEditingResume] = useState(false);
+  const [resumeBackup, setResumeBackup] = useState<ResumeData | null>(null);
   const [atsLoading, setAtsLoading] = useState(false);
   const [atsResult, setAtsResult] = useState<ATSAnalysis | null>(null);
 
@@ -691,6 +692,7 @@ export function DetailedResumeBuilder({
       if (!res.ok) throw new Error(data.error || t("error"));
       setAtsResult(null);
       setEditingResume(false);
+      setResumeBackup(null);
       patchDraft((d) => ({
         ...d,
         resume: data.resume,
@@ -709,6 +711,25 @@ export function DetailedResumeBuilder({
   const updateResume = (next: ResumeData) => {
     patchDraft((d) => ({ ...d, resume: next }));
     setAtsResult(null);
+  };
+
+  const startEditingResume = () => {
+    if (!resume) return;
+    setResumeBackup(structuredClone(resume));
+    setEditingResume(true);
+  };
+
+  const doneEditingResume = () => {
+    setResumeBackup(null);
+    setEditingResume(false);
+  };
+
+  const cancelEditingResume = () => {
+    if (resumeBackup) {
+      updateResume(resumeBackup);
+    }
+    setResumeBackup(null);
+    setEditingResume(false);
   };
 
   const analyzeAts = async () => {
@@ -1670,7 +1691,12 @@ export function DetailedResumeBuilder({
               </div>
 
               {editingResume && resume && (
-                <ResumeEditor data={resume} onChange={updateResume} />
+                <ResumeEditor
+                  data={resume}
+                  onChange={updateResume}
+                  onDone={doneEditingResume}
+                  onCancel={cancelEditingResume}
+                />
               )}
 
               {atsResult && <AtsAnalysisResults result={atsResult} compact />}
@@ -1692,14 +1718,33 @@ export function DetailedResumeBuilder({
                 </div>
                 {resume && step === "preview" && (
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingResume((v) => !v)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                      {editingResume ? t("doneEditing") : t("editResume")}
-                    </Button>
+                    {!editingResume ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={startEditingResume}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        {t("editResume")}
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={cancelEditingResume}
+                        >
+                          {t("cancelEdit")}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={doneEditingResume}
+                        >
+                          {t("doneEditing")}
+                        </Button>
+                      </>
+                    )}
                     <Button variant="outline" size="sm" onClick={handlePrint}>
                       <Printer className="h-4 w-4" />
                       {t("print")}
