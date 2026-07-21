@@ -71,6 +71,7 @@ import {
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { buildTemplatePreviewResume } from "@/lib/template-preview";
 import { resumeToPlainText } from "@/lib/resume-to-text";
+import { printResume } from "@/lib/print-resume";
 import { cn } from "@/lib/utils";
 
 const CERT_MAX_BYTES = 1.5 * 1024 * 1024;
@@ -707,7 +708,8 @@ export function DetailedResumeBuilder({
     }
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () =>
+    printResume(resume?.contact?.fullName || basics?.fullName);
 
   const updateResume = (next: ResumeData) => {
     patchDraft((d) => ({ ...d, resume: next }));

@@ -172,6 +172,9 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 
 ## Changelog
 
+### 2026-07-21 — PDF download filename
+- Download PDF (print) uses document title `Bahath Jobz - {Full Name}` so Save as PDF defaults to that filename (both Guided and Detailed)
+
 ### 2026-07-21 — Arabic proficiency + natural Arabic questions
 - Language proficiency dropdown shows Arabic labels when locale is `ar`
 - CV language lines use localized proficiency when generating/previewing in Arabic

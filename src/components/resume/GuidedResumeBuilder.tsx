@@ -71,6 +71,7 @@ import {
 } from "@/lib/guided-answers";
 import { buildTemplatePreviewResume } from "@/lib/template-preview";
 import { resumeToPlainText } from "@/lib/resume-to-text";
+import { printResume } from "@/lib/print-resume";
 import { cn } from "@/lib/utils";
 
 const templates: {
@@ -452,7 +453,8 @@ export function GuidedResumeBuilder({
     }
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () =>
+    printResume(resume?.contact?.fullName || basics?.fullName);
 
   const updateResume = (next: ResumeData) => {
     patchDraft((d) => ({ ...d, resume: next }));
