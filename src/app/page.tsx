@@ -22,7 +22,7 @@ export default function HomePage() {
       icon: FileText,
       titleKey: "featureBuilderTitle" as const,
       descKey: "featureBuilderDesc" as const,
-      href: "/builder",
+      href: "/builder?select=1",
       ctaKey: "startBuilding" as const,
     },
     {
@@ -75,7 +75,7 @@ export default function HomePage() {
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link href="/builder">
+              <Link href="/builder?select=1">
                 <Button size="lg" variant="secondary">
                   {t("getStarted")}
                   <ArrowRight className="h-5 w-5" />

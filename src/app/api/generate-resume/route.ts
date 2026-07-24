@@ -5,8 +5,15 @@ import type {
   ResumeBasics,
   ResumeData,
 } from "@/lib/types";
-import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
-import { formatLanguageEntry } from "@/lib/resume-drafts";
+import {
+  normalizeCertifications,
+  normalizeReferences,
+  normalizeResumeSkills,
+} from "@/lib/types";
+import {
+  formatLanguageEntry,
+  referenceEntriesToResume,
+} from "@/lib/resume-drafts";
 
 /** Strip bulky file payloads before sending basics to the model. */
 function basicsForAI(basics: ResumeBasics): Omit<ResumeBasics, "certificates"> & {
@@ -21,17 +28,36 @@ function basicsForAI(basics: ResumeBasics): Omit<ResumeBasics, "certificates"> &
         name: c.name,
         fileName: c.fileName || undefined,
       })),
+    references: (basics.references || [])
+      .filter((r) => r.name?.trim())
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        title: r.title,
+        company: r.company,
+        phone: r.phone,
+        email: r.email,
+      })),
   };
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { basics, answers, selectedSkills, language } = body as {
+    const {
+      basics,
+      answers,
+      selectedSkills,
+      selectedCompetencies,
+      language,
+      includeProjects,
+    } = body as {
       basics: ResumeBasics;
       answers: InterviewAnswer[];
       selectedSkills?: string[];
+      selectedCompetencies?: string[];
       language: "en" | "ar";
+      includeProjects?: boolean;
     };
 
     if (!basics?.fullName || !basics?.email) {
@@ -49,6 +75,7 @@ export async function POST(request: Request) {
 
     const targetRole = basics.targetRole || "the target role";
     const skillsList = (selectedSkills ?? []).filter(Boolean);
+    const competenciesList = (selectedCompetencies ?? []).filter(Boolean);
     const experienceEntries = (basics.experience || []).filter(
       (e) => e.position?.trim() && e.company?.trim()
     );
@@ -61,6 +88,14 @@ export async function POST(request: Request) {
     const certificateEntries = (basics.certificates || []).filter((e) =>
       e.name?.trim()
     );
+    const referenceEntries = (basics.references || []).filter((e) =>
+      e.name?.trim()
+    );
+    const allowProjects = includeProjects !== false;
+
+    const projectsRule = allowProjects
+      ? `5. **Projects** — include ONLY when described. If none, return "projects": [].`
+      : `5. **Projects** — DO NOT include projects. Return "projects": [].`;
 
     const completion = await openai.chat.completions.create({
       model: getModel(),
@@ -68,83 +103,82 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: `You are an elite ATS resume writer and career strategist at Bahath Jobz. ${langInstruction}
+          content: `You are an elite ATS resume writer at Bahath Jobz. ${langInstruction}
 
-Using the candidate's basic info, structured professional experience, education, languages, certificates, interview answers, and selected skills, produce a highly professional, accurate, ATS-optimized resume for the role: "${targetRole}".
+Produce an accurate ATS-optimized resume for: "${targetRole}".
 
-## Section order (MANDATORY — match this schema order)
-1. Professional Summary
-2. Professional Skills (split into technical and soft)
-3. Professional Experience
-4. Projects
-5. Education
-6. Certifications & Courses
-7. Languages
+## Section content (templates use standard ATS headings: Summary, Experience, Education, Skills, …)
+Populate skills as three groups under Skills: competencies (role-specific), technical, soft.
 
-## Quality standards (MANDATORY)
+## Quality standards
 
-1. **Consistent bullet points** — use bullet points uniformly across Experience and Projects. Every experience entry must use 3–5 parallel bullet points (action verb + context + result). Same structure for project outcomes.
-
-2. **Metrics and impact in Experience** — each experience bullet MUST emphasize measurable impact when supported by answers. Never fabricate numbers.
-
-3. **Professional Experience roles** — use the provided experience entries as the source of truth for titles, companies, and dates. Expand each with detailed bullets from interview answers. Preserve chronological dates; reverse-chronological order.
-
-Known roles:
+1. Experience bullets: 3–5 each, action + context + result. Never fabricate metrics.
+2. Experience source of truth — titles, companies, locations, dates from known roles.
+   **Dates MUST use YYYY-MM** (e.g. 2022-03) for consistency; use empty string for missing end when current:
 ${experienceEntries
   .map(
     (e) =>
-      `- ${e.position} at ${e.company} (${e.startDate} – ${e.current ? "Present" : e.endDate})`
+      `- ${e.position} at ${e.company}${e.location?.trim() ? ` [${e.location.trim()}]` : ""} (${e.startDate} – ${e.current ? "Present" : e.endDate})`
   )
   .join("\n") || "- (see basics.experience)"}
 
-4. **Skills** — use the candidate's selected skills as the primary skills list. Categorize them into "technical" and "soft" based on the target role. You may lightly refine wording but do NOT add unrelated skills.
+3. **skills.competencies** — role-specific domain competencies:
+${competenciesList.length ? competenciesList.map((s) => `- ${s}`).join("\n") : "- (derive from answers for this role)"}
 
-Selected skills to include:
-${skillsList.length ? skillsList.map((s) => `- ${s}`).join("\n") : "- (derive carefully from answers only)"}
+4. **skills.technical** / **skills.soft** — tools/systems and soft skills:
+${skillsList.length ? skillsList.map((s) => `- ${s}`).join("\n") : "- (derive carefully from answers)"}
 
-5. **Education** — use the provided education entries as the source of truth (degree, institution, graduation date, GPA). Do not invent degrees.
-Known education:
+5. Education source of truth — graduationDate as YYYY-MM or YYYY:
 ${educationEntries
   .map(
     (e) =>
-      `- ${e.degree} at ${e.institution} (${e.graduationDate})${e.gpa ? ` GPA: ${e.gpa}` : ""}`
+      `- ${e.degree} at ${e.institution}${e.location?.trim() ? `, ${e.location.trim()}` : ""} (${e.graduationDate})${e.gpa ? ` GPA: ${e.gpa}` : ""}`
   )
   .join("\n") || "- (see basics.education)"}
 
-6. **Certifications & Courses** — include provided certificate names. Populate "courses" only from interview answers when relevant. For certifications return objects: { "name": "...", "url": null } (urls are attached server-side).
-
-Known certificates:
+6. Certifications — use provided names:
 ${certificateEntries.map((c) => `- ${c.name}`).join("\n") || "- (none provided)"}
 
-7. **Keyword-rich Professional Summary** — 3–4 sentences packed with role-specific ATS keywords for "${targetRole}".
+7. Keyword-rich Summary — 3–4 sentences for "${targetRole}".
 
-8. **Projects** — include when described. Each: name, description, technologies, measurable outcomes, optional URL.
+${projectsRule}
 
-9. **Languages** — use provided languages when present:
+8. Languages:
 ${languageEntries
   .map((l) => `- ${formatLanguageEntry(l.language, l.proficiency, language)}`)
   .join("\n") || "- (none provided; include from answers if any)"}
 
-## Additional rules
-- Reverse-chronological experience order
-- Preserve contact links: linkedin, github, website from basics
-- NEVER invent employers, degrees, projects, certs, or metrics not supported by the input
-- ATS-safe: plain text, standard section names, no tables/graphics/columns
+9. References — use ONLY these if present (never invent):
+${referenceEntries
+  .map(
+    (r) =>
+      `- ${r.name}${r.title ? ` — ${r.title}` : ""}${r.company ? `, ${r.company}` : ""}${r.phone ? ` | ${r.phone}` : ""}${r.email ? ` | ${r.email}` : ""}`
+  )
+  .join("\n") || "- (none — return references: [])"}
 
-Return JSON matching this exact schema:
+## Additional rules
+- Reverse-chronological experience
+- All dates consistently as YYYY-MM (or YYYY when month unknown)
+- Preserve contact links from basics
+- NEVER invent employers, degrees, projects, certs, references, or metrics
+- ATS-safe plain text
+
+Return JSON:
 {
   "contact": { "fullName", "email", "phone", "location", "linkedin?", "github?", "website?" },
-  "summary": "keyword-rich professional summary for ${targetRole}",
+  "summary": "...",
   "skills": {
-    "technical": ["skill1", "skill2"],
-    "soft": ["skill3", "skill4"]
+    "competencies": ["..."],
+    "technical": ["..."],
+    "soft": ["..."]
   },
-  "experience": [{ "title", "company", "location?", "startDate", "endDate", "current?", "bullets": ["quantified bullet", ...] }],
-  "projects": [{ "name", "description?", "technologies": [], "outcomes": ["measurable bullet", ...], "url?" }],
+  "experience": [{ "title", "company", "location?", "startDate", "endDate", "current?", "bullets": [] }],
+  "projects": [],
   "education": [{ "degree", "institution", "location?", "graduationDate", "gpa?" }],
-  "certifications": [{ "name": "AWS Certified Developer", "url": null }],
-  "courses": ["React Advanced Patterns — Frontend Masters, 2023", ...],
-  "languages": ["English (Fluent)", "Arabic (Native)"]
+  "certifications": [{ "name": "...", "url": null }],
+  "courses": [],
+  "languages": [],
+  "references": [{ "name", "title?", "company?", "phone?", "email?" }]
 }`,
         },
         {
@@ -153,7 +187,9 @@ Return JSON matching this exact schema:
             {
               basics: basicsForAI(basics),
               answers,
+              selectedCompetencies: competenciesList,
               selectedSkills: skillsList,
+              includeProjects: allowProjects,
             },
             null,
             2
@@ -174,6 +210,21 @@ Return JSON matching this exact schema:
     const resumeData: ResumeData = JSON.parse(content);
     resumeData.skills = normalizeResumeSkills(resumeData.skills);
 
+    if (competenciesList.length) {
+      const have = new Set(
+        resumeData.skills.competencies.map((s) => s.toLowerCase())
+      );
+      const missing = competenciesList.filter(
+        (s) => !have.has(s.toLowerCase())
+      );
+      if (missing.length) {
+        resumeData.skills.competencies = [
+          ...resumeData.skills.competencies,
+          ...missing,
+        ];
+      }
+    }
+
     if (skillsList.length) {
       const allAi = new Set([
         ...resumeData.skills.technical.map((s) => s.toLowerCase()),
@@ -188,24 +239,51 @@ Return JSON matching this exact schema:
       }
     }
 
-    // Authoritative education from basics
     if (educationEntries.length) {
       resumeData.education = educationEntries.map((e) => ({
         degree: e.degree.trim(),
         institution: e.institution.trim(),
+        location: e.location?.trim() || undefined,
         graduationDate: e.graduationDate,
         gpa: e.gpa?.trim() || undefined,
       }));
     }
 
-    // Authoritative languages from basics
+    if (experienceEntries.length && Array.isArray(resumeData.experience)) {
+      resumeData.experience = resumeData.experience.map((exp) => {
+        const match =
+          experienceEntries.find(
+            (e) =>
+              e.company.trim().toLowerCase() ===
+                (exp.company || "").trim().toLowerCase() &&
+              e.position.trim().toLowerCase() ===
+                (exp.title || "").trim().toLowerCase()
+          ) ||
+          experienceEntries.find(
+            (e) =>
+              e.company.trim().toLowerCase() ===
+              (exp.company || "").trim().toLowerCase()
+          );
+        if (!match) return exp;
+        return {
+          ...exp,
+          location: match.location?.trim() || exp.location,
+          current: match.current ?? exp.current,
+          endDate: match.current ? "Present" : exp.endDate || match.endDate,
+        };
+      });
+    }
+
+    if (!allowProjects) {
+      resumeData.projects = [];
+    }
+
     if (languageEntries.length) {
       resumeData.languages = languageEntries.map((l) =>
         formatLanguageEntry(l.language, l.proficiency, language)
       );
     }
 
-    // Authoritative certifications with uploaded file links
     if (certificateEntries.length) {
       resumeData.certifications = certificateEntries.map((c) => ({
         name: c.name.trim(),
@@ -215,6 +293,13 @@ Return JSON matching this exact schema:
       resumeData.certifications = normalizeCertifications(
         resumeData.certifications
       );
+    }
+
+    // Authoritative references — never keep invented ones when basics has none
+    if (referenceEntries.length) {
+      resumeData.references = referenceEntriesToResume(referenceEntries);
+    } else {
+      resumeData.references = [];
     }
 
     resumeData.contact = {
@@ -230,7 +315,8 @@ Return JSON matching this exact schema:
         resumeData.contact?.headline ||
         undefined,
       photoDataUrl:
-        (typeof basics.photoDataUrl === "string" && basics.photoDataUrl.trim()) ||
+        (typeof basics.photoDataUrl === "string" &&
+          basics.photoDataUrl.trim()) ||
         resumeData.contact?.photoDataUrl ||
         undefined,
     };

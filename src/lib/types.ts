@@ -42,8 +42,13 @@ export interface Project {
   url?: string;
 }
 
-/** Structured skills for ATS resumes (soft vs technical). */
+/**
+ * Structured skills for ATS resumes.
+ * - competencies → Core Competencies (near top)
+ * - technical + soft → Technical & Additional Skills (near bottom)
+ */
 export interface ResumeSkills {
+  competencies: string[];
   technical: string[];
   soft: string[];
 }
@@ -52,6 +57,35 @@ export interface ResumeSkills {
 export interface CertificationItem {
   name: string;
   url?: string;
+}
+
+/** Optional professional reference on the CV. */
+export interface Reference {
+  name: string;
+  title?: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+}
+
+/** Built-in CV body sections (contact/header is always fixed above these). */
+export type BuiltinSectionId =
+  | "summary"
+  | "competencies"
+  | "experience"
+  | "projects"
+  | "education"
+  | "certifications"
+  | "technical"
+  | "languages"
+  | "references"
+  | "courses";
+
+/** User-defined section: custom heading + free-text body. */
+export interface CustomSection {
+  id: string;
+  heading: string;
+  content: string;
 }
 
 export interface ResumeData {
@@ -64,6 +98,15 @@ export interface ResumeData {
   certifications?: CertificationItem[];
   courses?: string[];
   languages?: string[];
+  /** Optional references section — omit or empty when not provided. */
+  references?: Reference[];
+  /**
+   * Body section order. Values are BuiltinSectionId or `custom:${id}`.
+   * When omitted, DEFAULT_SECTION_ORDER is used (see resume-sections).
+   */
+  sectionOrder?: string[];
+  /** Custom sections keyed by id; referenced from sectionOrder as `custom:${id}`. */
+  customSections?: CustomSection[];
 }
 
 export interface UserInfoInput {
@@ -88,6 +131,8 @@ export interface ExperienceEntry {
   id: string;
   position: string;
   company: string;
+  /** Optional workplace / city. */
+  location?: string;
   startDate: string;
   endDate: string;
   current?: boolean;
@@ -98,8 +143,20 @@ export interface EducationEntry {
   id: string;
   degree: string;
   institution: string;
+  /** Optional city / country shown under education. */
+  location?: string;
   graduationDate: string;
   gpa?: string;
+}
+
+/** Optional reference entry on the basics step. */
+export interface ReferenceEntry {
+  id: string;
+  name: string;
+  title?: string;
+  company?: string;
+  phone?: string;
+  email?: string;
 }
 
 /** Optional language entry on the basics step. */
@@ -134,6 +191,8 @@ export interface ResumeBasics {
   education: EducationEntry[];
   languages: LanguageEntry[];
   certificates: CertificateEntry[];
+  /** Optional professional references. */
+  references: ReferenceEntry[];
 }
 
 export interface InterviewQuestion {
@@ -148,6 +207,7 @@ export interface InterviewQuestion {
     | "projects"
     | "technologies"
     | "certifications"
+    | "references"
     | "general";
 }
 
@@ -190,7 +250,10 @@ export interface GuidedQuestion {
     | "projects"
     | "technologies"
     | "certifications"
+    | "references"
     | "general";
+  /** Topic tag from guided-questions API (e.g. projects_or_portfolio). */
+  topic?: string;
 }
 
 export interface GuidedFieldGroup {
@@ -233,26 +296,60 @@ export interface CoverLetterResult {
   missingKeywords?: string[];
 }
 
-/** Normalize AI/legacy skills into soft + technical. Keeps empty placeholders for the editor. */
+/** Normalize AI/legacy skills into competencies + technical + soft. */
 export function normalizeResumeSkills(
   skills: ResumeSkills | string[] | undefined | null
 ): ResumeSkills {
-  if (!skills) return { technical: [], soft: [] };
+  if (!skills) return { competencies: [], technical: [], soft: [] };
   if (Array.isArray(skills)) {
-    return { technical: [...skills], soft: [] };
+    return { competencies: [...skills], technical: [], soft: [] };
   }
-  return {
-    technical: Array.isArray(skills.technical) ? [...skills.technical] : [],
-    soft: Array.isArray(skills.soft) ? [...skills.soft] : [],
-  };
+  const technical = Array.isArray(skills.technical) ? [...skills.technical] : [];
+  const soft = Array.isArray(skills.soft) ? [...skills.soft] : [];
+  const competencies = Array.isArray(skills.competencies)
+    ? [...skills.competencies]
+    : [];
+  return { competencies, technical, soft };
 }
 
 export function hasAnySkills(skills: ResumeSkills | string[] | undefined | null): boolean {
   const n = normalizeResumeSkills(skills);
   return (
+    n.competencies.some((s) => s.trim().length > 0) ||
     n.technical.some((s) => s.trim().length > 0) ||
     n.soft.some((s) => s.trim().length > 0)
   );
+}
+
+export function hasCompetencies(
+  skills: ResumeSkills | string[] | undefined | null
+): boolean {
+  return normalizeResumeSkills(skills).competencies.some((s) => s.trim().length > 0);
+}
+
+export function hasTechnicalAdditionalSkills(
+  skills: ResumeSkills | string[] | undefined | null
+): boolean {
+  const n = normalizeResumeSkills(skills);
+  return (
+    n.technical.some((s) => s.trim().length > 0) ||
+    n.soft.some((s) => s.trim().length > 0)
+  );
+}
+
+export function normalizeReferences(
+  refs: Reference[] | undefined | null
+): Reference[] {
+  if (!refs?.length) return [];
+  return refs
+    .map((r) => ({
+      name: (r.name || "").trim(),
+      title: r.title?.trim() || undefined,
+      company: r.company?.trim() || undefined,
+      phone: r.phone?.trim() || undefined,
+      email: r.email?.trim() || undefined,
+    }))
+    .filter((r) => r.name);
 }
 
 /** Normalize AI/legacy certifications into name + optional url. Keeps empty rows for the editor. */

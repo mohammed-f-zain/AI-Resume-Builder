@@ -31,6 +31,7 @@ import { ResumePreview } from "@/components/resume/ResumePreview";
 import { ResumeEditor } from "@/components/resume/ResumeEditor";
 import { PhotoUpload } from "@/components/resume/PhotoUpload";
 import { AtsAnalysisResults } from "@/components/analyzer/AtsAnalysisResults";
+import { GuidedQuestionEditor } from "@/components/resume/GuidedQuestionEditor";
 import type {
   TemplateId,
   ResumeBasics,
@@ -53,6 +54,7 @@ import {
   getActiveDraft,
   guidedAnswersToInterviewAnswers,
   hasValidGuidedBasics,
+  isValidInternationalPhone,
   loadDraftStore,
   migrateLegacyDraft,
   normalizeBasics,
@@ -64,12 +66,11 @@ import {
 } from "@/lib/resume-drafts";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import {
-  createFieldGroup,
   emptyGuidedAnswer,
-  isFollowUpVisible,
   isGuidedAnswerComplete,
 } from "@/lib/guided-answers";
 import { buildTemplatePreviewResume } from "@/lib/template-preview";
+import { polishResumeWithAts, type PolishPhase } from "@/lib/polish-resume";
 import { resumeToPlainText } from "@/lib/resume-to-text";
 import { printResume } from "@/lib/print-resume";
 import { cn } from "@/lib/utils";
@@ -143,6 +144,7 @@ export function GuidedResumeBuilder({
   const { t, locale, dir } = useLocale();
   const [store, setStore] = useState<DraftStore | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState<PolishPhase>("generating");
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -275,14 +277,6 @@ export function GuidedResumeBuilder({
     }));
   };
 
-  const ensureFollowUpGroups = (question: GuidedQuestion, answer: GuidedAnswer): GuidedAnswer => {
-    if (!isFollowUpVisible(question, answer) || !question.followUp) {
-      return answer;
-    }
-    if (answer.fieldGroups?.length) return answer;
-    return { ...answer, fieldGroups: [createFieldGroup(question)] };
-  };
-
   const fetchNextQuestion = async (
     askedQuestions: GuidedQuestion[],
     answers: Record<string, GuidedAnswer>,
@@ -310,11 +304,24 @@ export function GuidedResumeBuilder({
           ...d,
           basics: normalizeBasics({
             ...d.basics,
-            experience: extracted.experience,
+            experience: extracted.experience.some(
+              (e) => e.position.trim() || e.company.trim()
+            )
+              ? extracted.experience
+              : d.basics.experience,
+            education: extracted.education.length
+              ? extracted.education
+              : d.basics.education,
+            references: extracted.references.length
+              ? extracted.references
+              : d.basics.references,
           }),
           selectedSkills: extracted.selectedSkills.length
             ? extracted.selectedSkills
             : d.selectedSkills,
+          selectedCompetencies: extracted.selectedCompetencies.length
+            ? extracted.selectedCompetencies
+            : d.selectedCompetencies,
           step: "template",
           maxStepIndex: Math.max(d.maxStepIndex, 2),
           guidedQuestionIndex: Math.max(0, askedQuestions.length - 1),
@@ -400,9 +407,50 @@ export function GuidedResumeBuilder({
     }
   };
 
+  /** Interview finished when template step is unlocked (maxStepIndex >= 2). */
+  const interviewComplete =
+    maxStepIndex >= 2 && guidedQuestions.length > 0;
+
+  const continueFromInterviewReview = () => {
+    for (const q of guidedQuestions) {
+      if (!isGuidedAnswerComplete(q, guidedAnswers[q.id])) {
+        setError(t("guidedAnswerRequired"));
+        return;
+      }
+    }
+    setError("");
+    const extracted = extractFromGuidedAnswers(guidedQuestions, guidedAnswers);
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        experience: extracted.experience.some(
+          (e) => e.position.trim() || e.company.trim()
+        )
+          ? extracted.experience
+          : d.basics.experience,
+        education: extracted.education.length
+          ? extracted.education
+          : d.basics.education,
+        references: extracted.references.length
+          ? extracted.references
+          : d.basics.references,
+      }),
+      selectedSkills: extracted.selectedSkills.length
+        ? extracted.selectedSkills
+        : d.selectedSkills,
+      selectedCompetencies: extracted.selectedCompetencies.length
+        ? extracted.selectedCompetencies
+        : d.selectedCompetencies,
+      step: "template",
+      maxStepIndex: Math.max(d.maxStepIndex, 2),
+    }));
+  };
+
   const generateResume = async () => {
     if (!basics) return;
     setLoading(true);
+    setLoadingPhase("generating");
     setError("");
     try {
       const extracted = extractFromGuidedAnswers(guidedQuestions, guidedAnswers);
@@ -413,14 +461,29 @@ export function GuidedResumeBuilder({
         )
           ? extracted.experience
           : basics.experience,
+        education: extracted.education.length
+          ? extracted.education
+          : basics.education,
+        references: extracted.references.length
+          ? extracted.references
+          : basics.references,
       });
       const skills =
         extracted.selectedSkills.length > 0
           ? extracted.selectedSkills
           : selectedSkills;
+      const competencies =
+        extracted.selectedCompetencies.length > 0
+          ? extracted.selectedCompetencies
+          : draft?.selectedCompetencies ?? [];
       const answerList = guidedAnswersToInterviewAnswers(
         guidedQuestions,
         guidedAnswers
+      );
+
+      const includeProjects = guidedQuestions.some(
+        (q) =>
+          q.category === "projects" || q.topic === "projects_or_portfolio"
       );
 
       const res = await fetch("/api/generate-resume", {
@@ -430,19 +493,37 @@ export function GuidedResumeBuilder({
           basics: mergedBasics,
           answers: answerList,
           selectedSkills: skills,
+          selectedCompetencies: competencies,
           language: locale,
+          includeProjects,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t("error"));
-      setAtsResult(null);
+
+      let finalResume = data.resume as ResumeData;
+      let analysis: ATSAnalysis | null = null;
+      try {
+        const polished = await polishResumeWithAts(
+          data.resume,
+          locale,
+          setLoadingPhase
+        );
+        finalResume = polished.resume;
+        analysis = polished.analysis;
+      } catch {
+        // Still show the generated CV if ATS polish fails
+      }
+
+      setAtsResult(analysis);
       setEditingResume(false);
       setResumeBackup(null);
       patchDraft((d) => ({
         ...d,
         basics: mergedBasics,
         selectedSkills: skills,
-        resume: data.resume,
+        selectedCompetencies: competencies,
+        resume: finalResume,
         step: "preview",
         maxStepIndex: Math.max(d.maxStepIndex, 3),
       }));
@@ -450,6 +531,7 @@ export function GuidedResumeBuilder({
       setError(e instanceof Error ? e.message : t("error"));
     } finally {
       setLoading(false);
+      setLoadingPhase("generating");
     }
   };
 
@@ -485,7 +567,7 @@ export function GuidedResumeBuilder({
     setAtsLoading(true);
     setError("");
     try {
-      const text = resumeToPlainText(resume);
+      const text = resumeToPlainText(resume, locale);
       const res = await fetch("/api/analyze-resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -547,6 +629,8 @@ export function GuidedResumeBuilder({
       answers: {},
       suggestedSkills: [],
       selectedSkills: [],
+      selectedCompetencies: [],
+      suggestedCompetencies: [],
       resume: null,
     });
     saveDraftStore(cleared);
@@ -807,11 +891,19 @@ export function GuidedResumeBuilder({
                     />
                   </div>
                   <div>
-                    <Label>{t("phone")}</Label>
+                    <Label>{t("phone")} *</Label>
                     <Input
                       value={basics.phone}
                       onChange={(e) => updateBasics("phone", e.target.value)}
+                      placeholder="+974..."
                     />
+                    <p className="mt-1 text-xs text-[#6b7c93]">{t("phoneHint")}</p>
+                    {basics.phone.trim() &&
+                      !isValidInternationalPhone(basics.phone) && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {t("phoneInvalid")}
+                        </p>
+                      )}
                   </div>
                   <div>
                     <Label>{t("location")}</Label>
@@ -912,297 +1004,56 @@ export function GuidedResumeBuilder({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5 text-[#1db4ce]" />
-                  {t("guidedQuestionTitle")}
+                  {interviewComplete
+                    ? t("guidedReviewTitle")
+                    : t("guidedQuestionTitle")}
                 </CardTitle>
                 {!fetchingQuestion && (
                   <CardDescription>
-                    {t("guidedQuestionProgress").replace(
-                      "{current}",
-                      String(qIndex + 1)
-                    )}
+                    {interviewComplete
+                      ? t("guidedReviewHint")
+                      : t("guidedQuestionProgress").replace(
+                          "{current}",
+                          String(qIndex + 1)
+                        )}
                   </CardDescription>
                 )}
               </CardHeader>
               <CardContent className="space-y-5">
-                {fetchingQuestion || !currentQuestion ? (
+                {fetchingQuestion || (!interviewComplete && !currentQuestion) ? (
                   <div className="flex min-h-[160px] items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-[#1db4ce]" />
                   </div>
+                ) : interviewComplete ? (
+                  <div className="space-y-6">
+                    {guidedQuestions.map((q, i) => (
+                      <div
+                        key={q.id}
+                        className="rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/40 p-4"
+                      >
+                        <GuidedQuestionEditor
+                          question={q}
+                          answer={guidedAnswers[q.id] || emptyGuidedAnswer()}
+                          onChange={(next) => setGuidedAnswer(q.id, next)}
+                          yesLabel={yesLabel}
+                          noLabel={noLabel}
+                          t={t}
+                          indexLabel={`${i + 1}.`}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <>
-                    <p className="text-lg font-semibold text-[#002b49]">
-                      {currentQuestion.question}
-                    </p>
-
-                    {currentQuestion.type === "yes_no" && (
-                      <div className="flex w-full flex-col gap-2">
-                        {[
-                          { value: "yes", label: yesLabel },
-                          { value: "no", label: noLabel },
-                        ].map(({ value, label }) => {
-                          const selected = currentAnswer.choice === value;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => {
-                                const next = ensureFollowUpGroups(currentQuestion, {
-                                  ...currentAnswer,
-                                  choice: value,
-                                  otherText: "",
-                                });
-                                setGuidedAnswer(currentQuestion.id, next);
-                              }}
-                              className={cn(
-                                "flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-start text-sm font-medium transition-all",
-                                selected
-                                  ? "border-[#002b49] bg-[#002b49] text-white"
-                                  : "border-[#e2e8f0] bg-white hover:border-[#1db4ce]"
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-                                  selected
-                                    ? "border-white bg-white text-[#002b49]"
-                                    : "border-[#e2e8f0]"
-                                )}
-                              >
-                                {selected && <Check className="h-3.5 w-3.5" />}
-                              </span>
-                              {label}
-                            </button>
-                          );
-                        })}
-                        <div className="rounded-xl border-2 border-dashed border-[#e2e8f0] p-3">
-                          <Label>{t("guidedOtherOption")}</Label>
-                          <Input
-                            className="mt-1"
-                            value={currentAnswer.choice === "other" ? currentAnswer.otherText || "" : ""}
-                            onChange={(e) =>
-                              setGuidedAnswer(currentQuestion.id, {
-                                ...currentAnswer,
-                                choice: "other",
-                                otherText: e.target.value,
-                                fieldGroups: [],
-                              })
-                            }
-                            placeholder={t("guidedOtherPlaceholder")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {currentQuestion.type === "single_choice" && (
-                      <div className="flex w-full flex-col gap-2">
-                        {(currentQuestion.options || []).map((opt) => {
-                          const selected = currentAnswer.choice === opt;
-                          return (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                const next = ensureFollowUpGroups(currentQuestion, {
-                                  ...currentAnswer,
-                                  choice: opt,
-                                  otherText: "",
-                                });
-                                setGuidedAnswer(currentQuestion.id, next);
-                              }}
-                              className={cn(
-                                "flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-start text-sm transition-all",
-                                selected
-                                  ? "border-[#002b49] bg-[#002b49]/5 font-medium text-[#002b49]"
-                                  : "border-[#e2e8f0] bg-white hover:border-[#1db4ce]"
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-                                  selected
-                                    ? "border-[#002b49] bg-[#002b49] text-white"
-                                    : "border-[#e2e8f0]"
-                                )}
-                              >
-                                {selected && <Check className="h-3 w-3" />}
-                              </span>
-                              <span className="flex-1">{opt}</span>
-                            </button>
-                          );
-                        })}
-                        <div className="rounded-xl border-2 border-dashed border-[#e2e8f0] p-3">
-                          <Label>{t("guidedOtherOption")}</Label>
-                          <Input
-                            className="mt-1"
-                            value={currentAnswer.choice === "other" ? currentAnswer.otherText || "" : ""}
-                            onFocus={() => {
-                              if (currentAnswer.choice !== "other") {
-                                setGuidedAnswer(currentQuestion.id, {
-                                  ...currentAnswer,
-                                  choice: "other",
-                                  fieldGroups: [],
-                                });
-                              }
-                            }}
-                            onChange={(e) =>
-                              setGuidedAnswer(currentQuestion.id, {
-                                ...currentAnswer,
-                                choice: "other",
-                                otherText: e.target.value,
-                                fieldGroups: [],
-                              })
-                            }
-                            placeholder={t("guidedOtherPlaceholder")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {currentQuestion.type === "multi_choice" && (
-                      <div className="flex w-full flex-col gap-2">
-                        {(currentQuestion.options || []).map((opt) => {
-                          const selected = (currentAnswer.choices || []).includes(opt);
-                          return (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                const prev = currentAnswer.choices || [];
-                                const choices = selected
-                                  ? prev.filter((c) => c !== opt)
-                                  : [...prev, opt];
-                                const next = ensureFollowUpGroups(currentQuestion, {
-                                  ...currentAnswer,
-                                  choices,
-                                });
-                                setGuidedAnswer(currentQuestion.id, next);
-                              }}
-                              className={cn(
-                                "flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-start text-sm transition-all",
-                                selected
-                                  ? "border-[#002b49] bg-[#002b49]/5 font-medium text-[#002b49]"
-                                  : "border-[#e2e8f0] bg-white hover:border-[#1db4ce]"
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded border-2",
-                                  selected
-                                    ? "border-[#002b49] bg-[#002b49] text-white"
-                                    : "border-[#e2e8f0]"
-                                )}
-                              >
-                                {selected && <Check className="h-3.5 w-3.5" />}
-                              </span>
-                              <span className="flex-1">{opt}</span>
-                            </button>
-                          );
-                        })}
-                        <div className="rounded-xl border-2 border-dashed border-[#e2e8f0] p-3">
-                          <Label>{t("guidedOtherOption")}</Label>
-                          <Input
-                            className="mt-1"
-                            value={currentAnswer.otherText || ""}
-                            onChange={(e) =>
-                              setGuidedAnswer(currentQuestion.id, {
-                                ...currentAnswer,
-                                otherText: e.target.value,
-                              })
-                            }
-                            placeholder={t("guidedOtherPlaceholder")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {isFollowUpVisible(currentQuestion, currentAnswer) &&
-                      currentQuestion.followUp && (
-                        <div className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/60 p-4">
-                          <p className="text-sm font-medium text-[#002b49]">
-                            {t("guidedFollowUpTitle")}
-                          </p>
-                          {(currentAnswer.fieldGroups || []).map((group, gi) => (
-                            <div
-                              key={group.id}
-                              className="space-y-3 rounded-lg border border-[#e2e8f0] bg-white p-3"
-                            >
-                              <div className="flex justify-between">
-                                <span className="text-xs font-semibold text-[#6b7c93]">
-                                  #{gi + 1}
-                                </span>
-                                {(currentAnswer.fieldGroups || []).length > 1 && (
-                                  <button
-                                    type="button"
-                                    className="text-xs text-red-600"
-                                    onClick={() =>
-                                      setGuidedAnswer(currentQuestion.id, {
-                                        ...currentAnswer,
-                                        fieldGroups: (currentAnswer.fieldGroups || []).filter(
-                                          (g) => g.id !== group.id
-                                        ),
-                                      })
-                                    }
-                                  >
-                                    {t("removeExperience")}
-                                  </button>
-                                )}
-                              </div>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                {currentQuestion.followUp!.fields.map((field) => (
-                                  <div key={field.id}>
-                                    <Label>
-                                      {field.label}
-                                      {field.required ? " *" : ""}
-                                    </Label>
-                                    <Input
-                                      type={field.inputType === "month" ? "month" : "text"}
-                                      value={group.values[field.id] || ""}
-                                      onChange={(e) => {
-                                        const fieldGroups = (currentAnswer.fieldGroups || []).map(
-                                          (g) =>
-                                            g.id === group.id
-                                              ? {
-                                                  ...g,
-                                                  values: {
-                                                    ...g.values,
-                                                    [field.id]: e.target.value,
-                                                  },
-                                                }
-                                              : g
-                                        );
-                                        setGuidedAnswer(currentQuestion.id, {
-                                          ...currentAnswer,
-                                          fieldGroups,
-                                        });
-                                      }}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                          {currentQuestion.followUp.allowMultiple && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setGuidedAnswer(currentQuestion.id, {
-                                  ...currentAnswer,
-                                  fieldGroups: [
-                                    ...(currentAnswer.fieldGroups || []),
-                                    createFieldGroup(currentQuestion),
-                                  ],
-                                })
-                              }
-                            >
-                              <Plus className="h-4 w-4" />
-                              {t("guidedAddAnother")}
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                  </>
+                  <GuidedQuestionEditor
+                    question={currentQuestion!}
+                    answer={currentAnswer}
+                    onChange={(next) =>
+                      setGuidedAnswer(currentQuestion!.id, next)
+                    }
+                    yesLabel={yesLabel}
+                    noLabel={noLabel}
+                    t={t}
+                  />
                 )}
               </CardContent>
             </Card>
@@ -1262,30 +1113,43 @@ export function GuidedResumeBuilder({
               <>
                 <Button
                   variant="outline"
-                  onClick={goPrevQuestion}
+                  onClick={() =>
+                    interviewComplete ? goToStep(0) : goPrevQuestion()
+                  }
                   disabled={fetchingQuestion}
                 >
                   <ChevronBack className="h-4 w-4" />
                   {t("previousStep")}
                 </Button>
-                <Button
-                  className="flex-1"
-                  size="lg"
-                  onClick={() => void goNextQuestion()}
-                  disabled={fetchingQuestion || !currentQuestion}
-                >
-                  {fetchingQuestion ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      {t("loadingQuestions")}
-                    </>
-                  ) : (
-                    <>
-                      {t("nextStep")}
-                      <Chevron className="h-5 w-5" />
-                    </>
-                  )}
-                </Button>
+                {interviewComplete ? (
+                  <Button
+                    className="flex-1"
+                    size="lg"
+                    onClick={continueFromInterviewReview}
+                  >
+                    {t("guidedReviewContinue")}
+                    <Chevron className="h-5 w-5" />
+                  </Button>
+                ) : (
+                  <Button
+                    className="flex-1"
+                    size="lg"
+                    onClick={() => void goNextQuestion()}
+                    disabled={fetchingQuestion || !currentQuestion}
+                  >
+                    {fetchingQuestion ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        {t("loadingQuestions")}
+                      </>
+                    ) : (
+                      <>
+                        {t("nextStep")}
+                        <Chevron className="h-5 w-5" />
+                      </>
+                    )}
+                  </Button>
+                )}
               </>
             )}
 
@@ -1305,7 +1169,9 @@ export function GuidedResumeBuilder({
                   {loading ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      {t("generating")}
+                      {loadingPhase === "polishing"
+                        ? t("polishingResume")
+                        : t("generating")}
                     </>
                   ) : (
                     <>
@@ -1332,7 +1198,9 @@ export function GuidedResumeBuilder({
                   {loading ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      {t("generating")}
+                      {loadingPhase === "polishing"
+                        ? t("polishingResume")
+                        : t("generating")}
                     </>
                   ) : (
                     <>
@@ -1368,8 +1236,6 @@ export function GuidedResumeBuilder({
                 <ResumeEditor
                   data={resume}
                   onChange={updateResume}
-                  onDone={doneEditingResume}
-                  onCancel={cancelEditingResume}
                 />
               )}
 
@@ -1427,7 +1293,12 @@ export function GuidedResumeBuilder({
                   <ResumePreview
                     data={
                       resume ??
-                      buildTemplatePreviewResume(basics, selectedSkills, locale)
+                      buildTemplatePreviewResume(
+                        basics,
+                        selectedSkills,
+                        locale,
+                        draft?.selectedCompetencies ?? []
+                      )
                     }
                     template={template}
                     locale={locale}

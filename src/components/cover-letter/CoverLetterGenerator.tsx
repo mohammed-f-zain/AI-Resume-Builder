@@ -1,16 +1,30 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Loader2, Copy, Check, Lightbulb, Upload, FileText } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Loader2,
+  Copy,
+  Check,
+  Lightbulb,
+  Upload,
+  FileText,
+  Download,
+  ChevronDown,
+  FileType,
+} from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import type { CoverLetterResult } from "@/lib/types";
+import {
+  downloadCoverLetterPdf,
+  downloadCoverLetterWord,
+} from "@/lib/download-cover-letter";
 import { cn } from "@/lib/utils";
 
 export function CoverLetterGenerator() {
-  const { t, locale } = useLocale();
+  const { t, locale, dir } = useLocale();
   const [position, setPosition] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -19,6 +33,23 @@ export function CoverLetterGenerator() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<CoverLetterResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloading, setDownloading] = useState<"pdf" | "word" | null>(null);
+  const downloadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!downloadOpen) return;
+    const close = (e: MouseEvent) => {
+      if (
+        downloadRef.current &&
+        !downloadRef.current.contains(e.target as Node)
+      ) {
+        setDownloadOpen(false);
+      }
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [downloadOpen]);
 
   const handleFile = useCallback((f: File) => {
     const valid =
@@ -76,6 +107,33 @@ export function CoverLetterGenerator() {
     await navigator.clipboard.writeText(result.coverLetter);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadPdf = () => {
+    if (!result?.coverLetter) return;
+    setDownloadOpen(false);
+    setDownloading("pdf");
+    try {
+      downloadCoverLetterPdf(result.coverLetter, {
+        position,
+        dir,
+      });
+    } finally {
+      window.setTimeout(() => setDownloading(null), 500);
+    }
+  };
+
+  const handleDownloadWord = async () => {
+    if (!result?.coverLetter) return;
+    setDownloadOpen(false);
+    setDownloading("word");
+    try {
+      await downloadCoverLetterWord(result.coverLetter, { position });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("error"));
+    } finally {
+      setDownloading(null);
+    }
   };
 
   return (
@@ -178,21 +236,75 @@ export function CoverLetterGenerator() {
         {result && (
           <>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                 <CardTitle>{t("coverLetterResult")}</CardTitle>
-                <Button variant="outline" size="sm" onClick={copyToClipboard}>
-                  {copied ? (
-                    <>
-                      <Check className="h-4 w-4 text-[#1db4ce]" />
-                      {t("copied")}
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4" />
-                      {t("copyToClipboard")}
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={copyToClipboard}>
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4 text-[#1db4ce]" />
+                        {t("copied")}
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        {t("copyToClipboard")}
+                      </>
+                    )}
+                  </Button>
+
+                  <div className="relative" ref={downloadRef}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDownloadOpen((o) => !o);
+                      }}
+                      disabled={!!downloading}
+                      aria-expanded={downloadOpen}
+                      aria-haspopup="menu"
+                    >
+                      {downloading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      {t("download")}
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform",
+                          downloadOpen && "rotate-180"
+                        )}
+                      />
+                    </Button>
+                    {downloadOpen && (
+                      <div
+                        role="menu"
+                        className="absolute end-0 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-[#e2e8f0] bg-white py-1 shadow-lg"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-[#141f2e] hover:bg-[#f4f7fa]"
+                          onClick={handleDownloadPdf}
+                        >
+                          <FileText className="h-4 w-4 text-[#1db4ce]" />
+                          {t("downloadPdf")}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-[#141f2e] hover:bg-[#f4f7fa]"
+                          onClick={() => void handleDownloadWord()}
+                        >
+                          <FileType className="h-4 w-4 text-[#1db4ce]" />
+                          {t("downloadWord")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="whitespace-pre-wrap rounded-xl bg-[#f4f7fa] p-6 text-sm leading-relaxed text-[#141f2e]">

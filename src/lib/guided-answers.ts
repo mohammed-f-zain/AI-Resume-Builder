@@ -1,4 +1,5 @@
 import type { GuidedAnswer, GuidedQuestion } from "@/lib/types";
+import { isMonthNotInFuture } from "@/lib/resume-drafts";
 
 export function emptyGuidedAnswer(): GuidedAnswer {
   return {
@@ -43,10 +44,23 @@ export function isGuidedAnswerComplete(
     const groups = answer.fieldGroups || [];
     if (!groups.length) return false;
     const required = question.followUp.fields.filter((f) => f.required);
+    const hasEndDateField = question.followUp.fields.some(
+      (f) => f.id === "endDate"
+    );
     for (const g of groups) {
       for (const f of required) {
         if (!g.values[f.id]?.trim()) return false;
       }
+      const isCurrent =
+        (g.values.current || "").toLowerCase() === "true" ||
+        (g.values.current || "").toLowerCase() === "yes";
+      if (hasEndDateField && !isCurrent && !g.values.endDate?.trim()) {
+        return false;
+      }
+      const start = (g.values.startDate || g.values.from || "").trim();
+      const end = (g.values.endDate || g.values.to || "").trim();
+      if (start && !isMonthNotInFuture(start)) return false;
+      if (!isCurrent && end && !isMonthNotInFuture(end)) return false;
     }
   }
 

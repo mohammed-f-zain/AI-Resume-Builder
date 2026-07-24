@@ -20,6 +20,7 @@ Bilingual (English / Arabic) AI-powered resume builder with ATS optimization —
 - **Styling:** Tailwind CSS v4
 - **AI:** OpenAI API (`gpt-4o-mini` via `OPENAI_MODEL` env)
 - **File parsing:** `unpdf` (PDF, serverless-safe on Vercel), `mammoth` (Word .docx)
+- **Cover letter export:** `docx` (Word download); PDF via print dialog
 - **Icons:** lucide-react
 - **i18n:** Custom context (`LocaleProvider`) — EN + AR with RTL
 - **Drafts:** localStorage multi-resume store (`src/lib/resume-drafts.ts`)
@@ -48,26 +49,31 @@ src/
 │       ├── guided-questions/route.ts     # Guided one-at-a-time MCQ
 │       ├── suggest-skills/route.ts
 │       ├── analyze-resume/route.ts       # FormData file OR JSON { text }
+│       ├── polish-resume/route.ts        # One-shot ATS improve + score
+│       ├── improve-resume/route.ts       # Apply ATS suggestions to ResumeData
 │       └── generate-cover-letter/route.ts
 ├── components/
 │   ├── layout/                 # Header (?select=1 → mode picker), Footer, LocaleSwitcher
 │   ├── ui/                     # Button, Card, Input, ConfirmDeleteModal
 │   ├── resume/
-│   │   ├── ResumeBuilder.tsx           # Mode picker + My Resumes
+│   │   ├── ResumeBuilder.tsx           # Mode picker + My Resumes (always picker on entry)
 │   │   ├── GuidedResumeBuilder.tsx
+│   │   ├── GuidedQuestionEditor.tsx    # Shared Q&A editor (sequential + review)
 │   │   ├── DetailedResumeBuilder.tsx
 │   │   ├── ResumeEditor.tsx            # In-preview edit (Done / Cancel)
 │   │   ├── PhotoUpload.tsx
 │   │   ├── ResumePreview.tsx
-│   │   └── templates/index.tsx
+│   │   └── templates/index.tsx         # Clickable contact icons (mail/phone/links)
 │   ├── analyzer/               # ResumeAnalyzer + AtsAnalysisResults
 │   └── cover-letter/
 ├── lib/
 │   ├── openai.ts, types.ts, utils.ts
-│   ├── resume-drafts.ts        # Drafts + language proficiency helpers
+│   ├── resume-drafts.ts        # Drafts + phone/date validators + language helpers
 │   ├── guided-answers.ts
+│   ├── polish-resume.ts        # Client: analyze → improve before showing CV
 │   ├── resume-to-text.ts       # ResumeData → plain text for ATS score
 │   ├── template-preview.ts
+│   ├── download-cover-letter.ts # Cover letter PDF (print) + Word (.docx)
 │   ├── parsers/resume-parser.ts  # unpdf + mammoth
 │   └── i18n/translations.ts
 └── contexts/LocaleContext.tsx
@@ -79,31 +85,50 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 
 | ID | Name | Style |
 |----|------|-------|
-| `classic` | Classic | Closest to HR Qatar ATS: uppercase name, `Title — Company \| dates`, Core Competencies as `•` text |
-| `modern` | Modern | Same ATS structure; navy section underlines; two-line experience |
+| `classic` | Classic | Uppercase name; sample experience layout; Core Competencies + Technical & Additional |
+| `modern` | Modern | Navy section underlines; same ATS section order |
 | `minimal` | Minimal | Extra whitespace; same ATS rules |
-| `executive` | Executive | Closest to Executive ATS PDF: Executive Summary, bullet Core Competencies, `Title` + `Company \| Location \| Dates` |
-| `creative` | Creative | ATS structure with cyan section underlines only |
+| `executive` | Executive | Executive Summary; bullet Core Competencies; same experience/refs layout |
+| `creative` | Creative | Cyan section underlines; same ATS structure |
 
 ### Fixed CV section order (all templates)
 
-1. Professional / Executive Summary  
-2. Core Competencies (skills)  
-3. Professional Experience  
-4. Projects  
-5. Education  
-6. Certifications  
-7. Languages  
+Default order (editable in Resume Editor via drag-and-drop):
 
-**Header:** name, headline (target role), `Location • Phone • Email • LinkedIn`, optional personal photo.
+1. Summary  
+2. Skills (subsections: Core Competencies, Technical Skills, Soft Skills)  
+3. Experience (`Title | MMM YYYY – MMM YYYY`, then light-gray `Company - Location`)  
+4. Projects (optional)  
+5. Education (`Degree - Institution, Location (MMM YYYY)`)  
+6. Certifications  
+7. Languages (optional)  
+8. References (optional)
+
+**ATS headings:** Professional Summary, Experience, Education, Skills, Projects, Certifications, Languages, References (rendered uppercase with underline).  
+**Formatting:** shared section/entry spacing and bullet lists (`list-disc`, consistent `leading-[1.55]`).  
+**Dates:** display as `MMM YYYY` (e.g. Jan 2024); stored as `YYYY-MM` from forms; see `src/lib/format-resume-date.ts`.
+
+**Editor:** Add missing built-ins or custom sections; reorder via HTML5 DnD. Contact header stays fixed.  
+**Data:** `sectionOrder?: string[]`, `customSections?: { id, heading, content }[]` — see `src/lib/resume-sections.ts`.
+
+**Header:** name, headline (target role), clickable `Location • Phone • Email • LinkedIn` with icons, optional personal photo.
+
+**Skills model:** `skills.competencies` + `skills.technical` + `skills.soft` under one **Skills** heading  
+**References:** optional on basics + ResumeData; never invented by AI.
 
 ## API Endpoints
 
 ### POST `/api/generate-resume`
-- **Body:** `{ basics, answers, selectedSkills, language }`
-- **Returns:** Structured `ResumeData` (skills `{ technical, soft }`)
+- **Body:** `{ basics, answers, selectedSkills, selectedCompetencies?, language, includeProjects? }`
+- **Returns:** Structured `ResumeData` (skills `{ competencies, technical, soft }`, optional `references`)
 - Contact overwrite: `headline`, optional `photoDataUrl`
 - Languages on CV use localized proficiency labels when `language === "ar"`
+- When `includeProjects === false` (Guided with no projects asked), forces `projects: []`
+- Never invent references; pass through from basics when provided
+
+### POST `/api/suggest-skills`
+- **Body:** `{ basics, answers, language }`
+- **Returns:** `{ competencies: string[], skills: string[] }`
 
 ### POST `/api/resume-questions` (Detailed)
 - **Body:** `{ basics, language }` — experience + education required
@@ -114,16 +139,24 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 - **Body:** `{ basics, language, askedQuestions, answers }`
 - **Returns:** next `{ question }` or `{ done: true }`
 - One question at a time from prior answers; role-specific; max ~12
+- Experience follow-ups: company, position, optional location, start/end dates
 - Arabic: natural MSA + quality examples in system prompt
-
-### POST `/api/suggest-skills`
-- **Body:** `{ basics, answers, language }`
-- **Returns:** `{ skills: string[] }`
 
 ### POST `/api/analyze-resume`
 - **Body (file):** `FormData` with `file` + optional `language`
 - **Body (text):** JSON `{ text, language }` — builder “Generate ATS Score”
 - **Returns:** `{ score, breakdown, suggestions, strengths, extractedText }`
+
+### POST `/api/polish-resume`
+- **Body:** `{ resume, language }`
+- **Returns:** `{ resume, analysis }` — single AI call: improve for ATS + final score
+- Used automatically after generate (before preview) via `polishResumeWithAts`
+- Faster than separate analyze + improve round-trips
+
+### POST `/api/improve-resume`
+- **Body:** `{ resume, analysis, language }`
+- **Returns:** `{ resume }` — legacy/manual apply of ATS suggestions
+- Prefer `/api/polish-resume` for the post-generate pipeline
 
 ### POST `/api/generate-cover-letter`
 - **Body:** multipart or JSON with position, job description, CV file/text, language
@@ -146,24 +179,32 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 ### Mode picker (`/builder`, mode `null`)
 1. **First:** Quick Guided + Detailed cards  
 2. **Second:** My Resumes (max 2 visible; “Show more” expands; Continue / Delete)  
-3. Nav “Resume Builder” → `/builder?select=1` clears mode back to picker  
-4. “Change writing mode” sets `mode: null`, `step: "mode"` (normalizeDraft must **not** re-infer mode when on picker)
+3. Opening Resume Builder via nav/home (`/builder?select=1`) shows the mode picker (drafts preserved; Continue resumes a saved CV)  
+4. Hydrate does **not** clear mode on every remount (avoids Fast Refresh wiping mid-session)  
+5. “Change writing mode” sets `mode: null`, `step: "mode"` (normalizeDraft must **not** re-infer mode when on picker)
 
 ### Mode A — Quick Guided
-1. Basics — contact, optional photo, target job, optional languages (proficiency dropdown localized)  
-2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups + Other; loader-only in question box while fetching  
-3. Template → Preview (generate; Edit with Done/Cancel; Generate ATS Score; Download PDF)
+1. Basics — contact (phone required international `+`/`00`), LinkedIn optional, optional photo, target job, optional languages  
+2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups (optional job location, “I currently work here”, end date not in future) + Other  
+3. After interview is finished, revisiting **AI Interview** shows **all Q&A** in editable review mode  
+4. Template → generate → **auto ATS polish** (`/api/polish-resume`) → Preview (Edit with Done/Cancel; optional re-score; Download PDF)  
+5. Projects section only if a projects topic was asked
 
 ### Mode B — Detailed
-1. Your Info — contact, photo, experience, education, languages, certificates  
+1. Your Info — same phone/LinkedIn/experience location/end-date rules; education; languages; certificates  
 2. AI Interview — free-text  
 3. Skills — AI multi-select  
-4. Template → Preview (same edit / ATS / print as Guided)
+4. Template → generate → **auto ATS polish** → Preview
 
 ### Preview editing
 - **Edit Resume** snapshots CV; live edits persist to draft  
 - **Done Editing** keeps changes · **Cancel** restores snapshot  
 - Add works for empty sections (projects, certs, skills, languages, etc.) — empty placeholders are kept until filled; templates filter blanks on render
+
+### Validation (both modes)
+- Phone: required; must start with `+` or `00`
+- Experience end dates: not in the future; Guided has “I currently work here”
+- Experience location: optional field on forms + CV
 
 ### Language proficiency
 - Stored values (EN): `Native | Fluent | Advanced | Intermediate | Basic`
@@ -171,6 +212,59 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 - CV text via `formatLanguageEntry(..., locale)`
 
 ## Changelog
+
+### 2026-07-24 — Fix polish ATS breakdown + Experience heading
+- Reverted CV heading to Experience (not Work Experience)
+- Polish was returning weight values (25/20/…) as breakdown; now detects that, clarifies prompt, and re-scores via analyze-resume when needed
+- ATS analyze uses temperature 0 + server-side weighted score for more stable results
+
+### 2026-07-24 — Work Experience heading + consistent bullets/spacing
+- Heading: Work Experience (ATS); Professional Summary
+- Unified section/entry spacing and bullet list styles across all CV sections
+
+### 2026-07-24 — ATS-standard headings + consistent dates
+- CV headings: Summary, Experience, Education, Skills, Certifications, …
+- Skills is one section with Core Competencies / Technical / Soft subsections
+- Dates normalized to MMM YYYY via `format-resume-date.ts`
+
+### 2026-07-24 — Editable CV sections + drag-and-drop order
+- ResumeEditor: add missing built-ins or custom sections; remove; reorder via HTML5 DnD
+- `sectionOrder` + `customSections` on ResumeData; templates/resume-to-text follow order
+- Contact header remains fixed; polish preserves order/customs
+
+### 2026-07-24 — CV structure aligned to sample (dual skills + references)
+- Section order: Summary → Core Competencies → Experience → Projects → Education → Licenses & Certifications → Technical & Additional Skills → Languages → References
+- Experience: `Title | dates` + light-gray `Company - Location`
+- Education location field; optional References (basics + editor + Guided)
+- Skills split: competencies vs technical/additional; suggest-skills returns both
+- Templates, generate/polish, resume-to-text, template-preview updated
+
+### 2026-07-15 — Cover letter Download (PDF / Word)
+- After generate: Download dropdown next to Copy — PDF (print → Save as PDF) or Word (.docx via `docx`)
+- Helper: `src/lib/download-cover-letter.ts`
+
+### 2026-07-15 — Guided interview review (edit all answers)
+- After finishing Quick interview, revisiting AI Interview shows all questions with editable answers
+- Shared `GuidedQuestionEditor`; Continue re-syncs experience/skills then goes to template
+
+### 2026-07-15 — Fix polish JSON truncate / 4min hang
+- Strip `photoDataUrl` and cert data-URLs before polish AI call (was truncating JSON → 500)
+- Soft fallback returns original CV if parse fails; client aborts polish after 55s
+- Re-attach photo/cert links after polish
+
+### 2026-07-15 — Faster ATS polish + fix builder remount wipe
+- Post-generate polish is one `/api/polish-resume` call (improve + final score) instead of analyze then improve
+- Resume Builder only resets to mode picker on `?select=1` (not every remount / Fast Refresh)
+- Fixes React “state update on unmounted component” when HMR remounted mid-generate
+
+### 2026-07-15 — Form validation, ATS polish pipeline, contact icons
+- LinkedIn labeled optional; phone required in international form (`+` or `00`)
+- Experience: optional Location; end dates cannot be future; Guided “I currently work here”
+- Resume Builder opens mode picker via `?select=1`; Continue from My Resumes
+- Templates: clickable contact links with icons (both modes)
+- Guided: no Projects section unless projects were asked; `includeProjects` flag
+- After generate (both modes): ATS polish then show CV
+- Shared client helper `src/lib/polish-resume.ts`
 
 ### 2026-07-21 — PDF download filename
 - Download PDF (print) uses document title `Bahath Jobz - {Full Name}` so Save as PDF defaults to that filename (both Guided and Detailed)

@@ -128,11 +128,13 @@ ${history.length ? JSON.stringify(history, null, 2) : "(none yet — ask the fir
 2. Do NOT re-ask information already answered above.
 3. Do NOT invent tech stacks for non-tech jobs (no React for plumbers; no pipe fittings for software engineers).
 4. Prefer concrete options a person in that field would recognize.
-5. For prior employment: yes_no with followUp fields company, position, startDate, endDate (allowMultiple true).
-6. For education: yes_no or single_choice with followUp degree, institution, graduationDate when useful.
-7. Skills/tools questions must use tools of THAT trade (e.g. plumber: soldering, drain cleaning; teacher: classroom management, curriculum design).
+5. For prior employment: yes_no with followUp fields company, position, location (optional), startDate, endDate (allowMultiple true). The UI adds "I currently work here" for endDate — do not invent fake end dates when current.
+6. For education: yes_no or single_choice with followUp degree, institution, location (optional), graduationDate when useful.
+7. Ask ONE multi_choice for role core competencies (category "skills", topic job_skills_tools) and ONE for tools/tech/soft skills (category "technologies") when useful.
 8. Skip spoken languages if already provided.
-9. Every question will show an "Other" field in the UI — still provide solid options.
+9. Ask about projects ONLY when relevant for the role. If not relevant, skip — never invent project questions.
+10. Optionally ask yes_no about professional references with followUp fields name, title, company, phone, email (allowMultiple true, category "references"). If not asked, that is fine — references are optional.
+11. Every question will show an "Other" field in the UI — still provide solid options.
 
 ## Question types
 - "yes_no"
@@ -157,12 +159,13 @@ If more questions needed:
       "fields": [
         { "id": "company", "label": "...", "inputType": "text", "required": true },
         { "id": "position", "label": "...", "inputType": "text", "required": true },
+        { "id": "location", "label": "...", "inputType": "text", "required": false },
         { "id": "startDate", "label": "...", "inputType": "month", "required": true },
         { "id": "endDate", "label": "...", "inputType": "month", "required": false }
       ]
     },
-    "category": "experience" | "skills" | "education" | "achievements" | "projects" | "technologies" | "certifications" | "general",
-    "topic": "work_experience" | "education" | "job_skills_tools" | "soft_skills" | "projects_or_portfolio" | "certifications_training" | "years_or_seniority"
+    "category": "experience" | "skills" | "education" | "achievements" | "projects" | "technologies" | "certifications" | "references" | "general",
+    "topic": "work_experience" | "education" | "job_skills_tools" | "soft_skills" | "projects_or_portfolio" | "certifications_training" | "years_or_seniority" | "references"
   }
 }
 
@@ -230,6 +233,7 @@ Hard limits:
       allowOther: true,
       followUp: q.followUp,
       category: q.category || "general",
+      topic: q.topic,
     };
 
     return NextResponse.json({

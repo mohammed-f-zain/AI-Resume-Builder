@@ -45,6 +45,9 @@ export function ResumeBuilder() {
     const migrated = migrateLegacyDraft();
     let loaded = normalizeDraftStore(migrated ?? loadDraftStore());
 
+    // Only force the mode picker when navigating via Resume Builder (?select=1).
+    // Do NOT reset on every remount (Fast Refresh / refresh) — that unmounts the
+    // active builder mid-update and causes React warnings + lost progress.
     if (searchParams.get("select") === "1") {
       const current = getActiveDraft(loaded);
       loaded = upsertDraft(loaded, {

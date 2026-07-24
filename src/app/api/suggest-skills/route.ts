@@ -32,20 +32,23 @@ export async function POST(request: Request) {
           role: "system",
           content: `You are an ATS resume specialist at Bahath Jobz. ${langInstruction}
 
-Based on the candidate's target role, professional experience, and interview answers, suggest a comprehensive skills list they can select from for their resume.
+Based on the candidate's target role, experience, and interview answers, suggest skills in TWO groups:
+
+1. **competencies** — role-specific core domain competencies (e.g. for a nurse: Critical Care Nursing, Mechanical Ventilation; for an engineer: System Design, CI/CD). 10–16 items.
+2. **skills** — technical tools/systems PLUS soft/additional skills (e.g. EHR, Leadership, Communication). 10–16 items.
 
 Target role: "${basics.targetRole}"
 
 Rules:
-- Suggest 15–25 skills relevant to the target role and what the candidate actually described
-- Mix technical/hard skills and soft skills
-- Prefer concrete, ATS-friendly skill names (tools, languages, frameworks, methodologies, and soft skills)
-- Do NOT invent skills that contradict the answers; prefer skills clearly supported or strongly implied
-- Deduplicate and keep names short (1–4 words each)
+- Prefer skills supported or strongly implied by answers
+- Do NOT invent unrelated skills
+- Deduplicate; keep names short (1–5 words)
+- competencies and skills must not heavily overlap
 
 Return JSON:
 {
-  "skills": ["React", "TypeScript", "Leadership", ...]
+  "competencies": ["...", "..."],
+  "skills": ["...", "..."]
 }`,
         },
         {
@@ -64,12 +67,28 @@ Return JSON:
       );
     }
 
-    const parsed = JSON.parse(content) as { skills?: string[] };
-    const skills = (parsed.skills ?? [])
+    const parsed = JSON.parse(content) as {
+      competencies?: string[];
+      skills?: string[];
+    };
+
+    const competencies = (parsed.competencies ?? [])
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter(Boolean);
+    let skills = (parsed.skills ?? [])
       .map((s) => (typeof s === "string" ? s.trim() : ""))
       .filter(Boolean);
 
-    return NextResponse.json({ skills });
+    // Backward-compatible: if model returned only skills, split roughly
+    if (!competencies.length && skills.length) {
+      const mid = Math.ceil(skills.length / 2);
+      return NextResponse.json({
+        competencies: skills.slice(0, mid),
+        skills: skills.slice(mid),
+      });
+    }
+
+    return NextResponse.json({ competencies, skills });
   } catch (error) {
     console.error("Suggest skills error:", error);
     return NextResponse.json(

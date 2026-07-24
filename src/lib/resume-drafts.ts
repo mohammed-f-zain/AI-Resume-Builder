@@ -6,12 +6,18 @@ import type {
   GuidedQuestion,
   InterviewQuestion,
   LanguageEntry,
+  ReferenceEntry,
   ResumeBasics,
   ResumeData,
   TemplateId,
   BuilderMode,
+  Reference,
 } from "@/lib/types";
-import { normalizeCertifications, normalizeResumeSkills } from "@/lib/types";
+import {
+  normalizeCertifications,
+  normalizeReferences,
+  normalizeResumeSkills,
+} from "@/lib/types";
 
 export type BuilderStep =
   | "basics"
@@ -37,6 +43,9 @@ export interface ResumeDraft {
   guidedQuestionIndex: number;
   suggestedSkills: string[];
   selectedSkills: string[];
+  /** Core competencies selected on Detailed skills step. */
+  selectedCompetencies: string[];
+  suggestedCompetencies: string[];
   template: TemplateId;
   step: BuilderStep;
   maxStepIndex: number;
@@ -98,10 +107,33 @@ export function createEmptyExperience(): ExperienceEntry {
     id: crypto.randomUUID(),
     position: "",
     company: "",
+    location: "",
     startDate: "",
     endDate: "",
     current: false,
   };
+}
+
+/** Current calendar month as `YYYY-MM` (for `<input type="month">`). */
+export function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Phone must be international: starts with `+` or `00`, with enough digits. */
+export function isValidInternationalPhone(phone: string): boolean {
+  const p = phone.trim();
+  if (!p) return false;
+  if (!(p.startsWith("+") || p.startsWith("00"))) return false;
+  const digits = p.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15;
+}
+
+/** Month value `YYYY-MM` must not be after the current month. Empty is allowed. */
+export function isMonthNotInFuture(ym: string): boolean {
+  const v = ym.trim();
+  if (!v) return true;
+  return v <= currentYearMonth();
 }
 
 export function createEmptyEducation(): EducationEntry {
@@ -109,8 +141,20 @@ export function createEmptyEducation(): EducationEntry {
     id: crypto.randomUUID(),
     degree: "",
     institution: "",
+    location: "",
     graduationDate: "",
     gpa: "",
+  };
+}
+
+export function createEmptyReference(): ReferenceEntry {
+  return {
+    id: crypto.randomUUID(),
+    name: "",
+    title: "",
+    company: "",
+    phone: "",
+    email: "",
   };
 }
 
@@ -140,6 +184,7 @@ export function normalizeExperience(
     id: e.id || crypto.randomUUID(),
     position: e.position ?? "",
     company: e.company ?? "",
+    location: e.location ?? "",
     startDate: e.startDate ?? "",
     endDate: e.endDate ?? "",
     current: !!e.current,
@@ -154,8 +199,23 @@ export function normalizeEducationEntries(
     id: e.id || crypto.randomUUID(),
     degree: e.degree ?? "",
     institution: e.institution ?? "",
+    location: e.location ?? "",
     graduationDate: e.graduationDate ?? "",
     gpa: e.gpa ?? "",
+  }));
+}
+
+export function normalizeReferenceEntries(
+  entries?: Partial<ReferenceEntry>[] | null
+): ReferenceEntry[] {
+  if (!entries) return [];
+  return entries.map((e) => ({
+    id: e.id || crypto.randomUUID(),
+    name: e.name ?? "",
+    title: e.title ?? "",
+    company: e.company ?? "",
+    phone: e.phone ?? "",
+    email: e.email ?? "",
   }));
 }
 
@@ -198,6 +258,7 @@ export const emptyBasics: ResumeBasics = {
   education: [],
   languages: [],
   certificates: [],
+  references: [],
 };
 
 export function createEmptyDraft(): ResumeDraft {
@@ -214,6 +275,7 @@ export function createEmptyDraft(): ResumeDraft {
       education: [createEmptyEducation()],
       languages: [],
       certificates: [],
+      references: [],
     },
     questions: [],
     answers: {},
@@ -222,6 +284,8 @@ export function createEmptyDraft(): ResumeDraft {
     guidedQuestionIndex: 0,
     suggestedSkills: [],
     selectedSkills: [],
+    suggestedCompetencies: [],
+    selectedCompetencies: [],
     template: "modern",
     step: "mode",
     maxStepIndex: 0,
@@ -245,6 +309,7 @@ export function normalizeBasics(basics?: Partial<ResumeBasics>): ResumeBasics {
     education: normalizeEducationEntries(basics?.education),
     languages: normalizeLanguageEntries(basics?.languages),
     certificates: normalizeCertificateEntries(basics?.certificates),
+    references: normalizeReferenceEntries(basics?.references),
   };
 }
 
@@ -258,6 +323,7 @@ export function normalizeResume(resume: ResumeData | null): ResumeData | null {
     languages: Array.isArray(resume.languages) ? resume.languages : [],
     skills: normalizeResumeSkills(resume.skills),
     certifications: normalizeCertifications(resume.certifications),
+    references: normalizeReferences(resume.references),
   };
 }
 
@@ -302,6 +368,8 @@ export function normalizeDraft(draft: ResumeDraft): ResumeDraft {
     guidedQuestionIndex: draft.guidedQuestionIndex ?? 0,
     suggestedSkills: draft.suggestedSkills ?? [],
     selectedSkills: draft.selectedSkills ?? [],
+    suggestedCompetencies: draft.suggestedCompetencies ?? [],
+    selectedCompetencies: draft.selectedCompetencies ?? [],
     template: draft.template ?? "modern",
     // Only coerce step away from "mode" when a mode is already chosen
     step: inferredMode && step === "mode" ? "basics" : step,
@@ -328,11 +396,15 @@ export function draftDisplayName(draft: ResumeDraft): string {
 
 export function isExperienceComplete(entry: ExperienceEntry): boolean {
   const hasEnd = entry.current || !!entry.endDate.trim();
+  const datesOk =
+    isMonthNotInFuture(entry.startDate) &&
+    (entry.current || isMonthNotInFuture(entry.endDate));
   return (
     !!entry.position.trim() &&
     !!entry.company.trim() &&
     !!entry.startDate.trim() &&
-    hasEnd
+    hasEnd &&
+    datesOk
   );
 }
 
@@ -379,7 +451,8 @@ export function hasValidGuidedBasics(basics: ResumeBasics): boolean {
   return (
     !!basics.fullName.trim() &&
     !!basics.email.trim() &&
-    !!basics.targetRole.trim()
+    !!basics.targetRole.trim() &&
+    isValidInternationalPhone(basics.phone)
   );
 }
 
@@ -531,46 +604,106 @@ export function guidedAnswersToInterviewAnswers(
   });
 }
 
-/** Pull experience + skills from guided answers into basics/skills for generation. */
+/** Pull experience, skills, competencies, references from guided answers. */
 export function extractFromGuidedAnswers(
   questions: GuidedQuestion[],
   answers: Record<string, GuidedAnswer>
-): { experience: ExperienceEntry[]; selectedSkills: string[] } {
+): {
+  experience: ExperienceEntry[];
+  education: EducationEntry[];
+  selectedSkills: string[];
+  selectedCompetencies: string[];
+  references: ReferenceEntry[];
+} {
   const experience: ExperienceEntry[] = [];
+  const education: EducationEntry[] = [];
   const selectedSkills: string[] = [];
+  const selectedCompetencies: string[] = [];
+  const references: ReferenceEntry[] = [];
 
   for (const q of questions) {
     const a = answers[q.id];
     if (!a) continue;
 
-    if (q.type === "multi_choice" && (q.category === "technologies" || q.category === "skills")) {
-      selectedSkills.push(...(a.choices || []));
+    if (q.type === "multi_choice") {
+      const picks = [...(a.choices || [])];
       if (a.otherText?.trim()) {
         a.otherText
           .split(/[,،]/)
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((s) => selectedSkills.push(s));
+          .forEach((s) => picks.push(s));
+      }
+      if (
+        q.category === "skills" ||
+        q.topic === "job_skills_tools" ||
+        q.topic === "soft_skills"
+      ) {
+        // Role core competencies vs tools: prefer competencies for "skills",
+        // technical for "technologies"
+        if (q.category === "technologies") {
+          selectedSkills.push(...picks);
+        } else {
+          selectedCompetencies.push(...picks);
+        }
+      } else if (q.category === "technologies") {
+        selectedSkills.push(...picks);
       }
     }
 
     if (a.fieldGroups?.length) {
       for (const g of a.fieldGroups) {
         const v = g.values;
+
+        if (q.category === "references") {
+          const name = (v.name || v.referenceName || "").trim();
+          if (name) {
+            references.push({
+              id: g.id || crypto.randomUUID(),
+              name,
+              title: (v.title || v.jobTitle || "").trim(),
+              company: (v.company || v.organization || "").trim(),
+              phone: (v.phone || "").trim(),
+              email: (v.email || "").trim(),
+            });
+          }
+          continue;
+        }
+
+        if (q.category === "education" || (v.degree && v.institution)) {
+          const degree = (v.degree || "").trim();
+          const institution = (v.institution || v.school || "").trim();
+          const location = (v.location || v.city || "").trim();
+          if (degree || institution) {
+            education.push({
+              id: g.id || crypto.randomUUID(),
+              degree,
+              institution,
+              location,
+              graduationDate: (v.graduationDate || v.endDate || "").trim(),
+              gpa: (v.gpa || "").trim(),
+            });
+            continue;
+          }
+        }
+
         const company = (v.company || v.companyName || "").trim();
         const position = (v.position || v.title || v.jobTitle || "").trim();
+        const location = (v.location || v.city || "").trim();
         const startDate = (v.startDate || v.from || "").trim();
         const endDate = (v.endDate || v.to || "").trim();
         const current =
           (v.current || "").toLowerCase() === "true" ||
           (v.current || "").toLowerCase() === "yes";
+
         if (company || position) {
           experience.push({
             id: g.id || crypto.randomUUID(),
             company,
             position,
+            location,
             startDate,
-            endDate,
+            endDate: current ? "" : endDate,
             current,
           });
         }
@@ -580,6 +713,25 @@ export function extractFromGuidedAnswers(
 
   return {
     experience: experience.length ? experience : [createEmptyExperience()],
+    education,
     selectedSkills: [...new Set(selectedSkills)],
+    selectedCompetencies: [...new Set(selectedCompetencies)],
+    references,
   };
+}
+
+export function referenceEntriesToResume(
+  entries: ReferenceEntry[]
+): Reference[] {
+  return normalizeReferences(
+    entries
+      .filter((e) => e.name.trim())
+      .map((e) => ({
+        name: e.name.trim(),
+        title: e.title?.trim() || undefined,
+        company: e.company?.trim() || undefined,
+        phone: e.phone?.trim() || undefined,
+        email: e.email?.trim() || undefined,
+      }))
+  );
 }

@@ -41,6 +41,7 @@ import type {
   EducationEntry,
   LanguageEntry,
   CertificateEntry,
+  ReferenceEntry,
   ATSAnalysis,
 } from "@/lib/types";
 import {
@@ -53,12 +54,16 @@ import {
   createEmptyEducation,
   createEmptyExperience,
   createEmptyLanguage,
+  createEmptyReference,
   deleteDraft,
   draftDisplayName,
   draftHasContent,
   getActiveDraft,
   hasValidEducation,
   hasValidExperience,
+  isValidInternationalPhone,
+  currentYearMonth,
+  isMonthNotInFuture,
   loadDraftStore,
   migrateLegacyDraft,
   saveDraftStore,
@@ -70,6 +75,7 @@ import {
 } from "@/lib/resume-drafts";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { buildTemplatePreviewResume } from "@/lib/template-preview";
+import { polishResumeWithAts, type PolishPhase } from "@/lib/polish-resume";
 import { resumeToPlainText } from "@/lib/resume-to-text";
 import { printResume } from "@/lib/print-resume";
 import { cn } from "@/lib/utils";
@@ -180,11 +186,13 @@ export function DetailedResumeBuilder({
   const { t, locale, dir } = useLocale();
   const [store, setStore] = useState<DraftStore | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState<PolishPhase>("generating");
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
   const [showDraftMenu, setShowDraftMenu] = useState(false);
   const [customSkill, setCustomSkill] = useState("");
+  const [customCompetency, setCustomCompetency] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [editingResume, setEditingResume] = useState(false);
   const [resumeBackup, setResumeBackup] = useState<ResumeData | null>(null);
@@ -200,6 +208,8 @@ export function DetailedResumeBuilder({
   const answers = draft?.answers ?? {};
   const suggestedSkills = draft?.suggestedSkills ?? [];
   const selectedSkills = draft?.selectedSkills ?? [];
+  const selectedCompetencies = draft?.selectedCompetencies ?? [];
+  const suggestedCompetencies = draft?.suggestedCompetencies ?? [];
   const template = draft?.template ?? "modern";
   const resume = draft?.resume ?? null;
 
@@ -262,7 +272,7 @@ export function DetailedResumeBuilder({
   const updateBasics = (
     field: keyof Omit<
       ResumeBasics,
-      "experience" | "education" | "languages" | "certificates"
+      "experience" | "education" | "languages" | "certificates" | "references"
     >,
     value: string
   ) => {
@@ -340,6 +350,42 @@ export function DetailedResumeBuilder({
         }),
       };
     });
+  };
+
+  const updateReference = (
+    id: string,
+    field: keyof ReferenceEntry,
+    value: string
+  ) => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        references: (d.basics.references || []).map((e) =>
+          e.id === id ? { ...e, [field]: value } : e
+        ),
+      }),
+    }));
+  };
+
+  const addReference = () => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        references: [...(d.basics.references || []), createEmptyReference()],
+      }),
+    }));
+  };
+
+  const removeReference = (id: string) => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        references: (d.basics.references || []).filter((e) => e.id !== id),
+      }),
+    }));
   };
 
   const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => {
@@ -485,6 +531,19 @@ export function DetailedResumeBuilder({
     });
   };
 
+  const toggleCompetency = (skill: string) => {
+    patchDraft((d) => {
+      const list = d.selectedCompetencies ?? [];
+      const exists = list.includes(skill);
+      return {
+        ...d,
+        selectedCompetencies: exists
+          ? list.filter((s) => s !== skill)
+          : [...list, skill],
+      };
+    });
+  };
+
   const addCustomSkill = () => {
     const skill = customSkill.trim();
     if (!skill) return;
@@ -505,6 +564,28 @@ export function DetailedResumeBuilder({
       };
     });
     setCustomSkill("");
+  };
+
+  const addCustomCompetency = () => {
+    const skill = customCompetency.trim();
+    if (!skill) return;
+    patchDraft((d) => {
+      const suggested = d.suggestedCompetencies ?? [];
+      const selected = d.selectedCompetencies ?? [];
+      const already =
+        selected.some((s) => s.toLowerCase() === skill.toLowerCase()) ||
+        suggested.some((s) => s.toLowerCase() === skill.toLowerCase());
+      return {
+        ...d,
+        suggestedCompetencies: already ? suggested : [...suggested, skill],
+        selectedCompetencies: selected.some(
+          (s) => s.toLowerCase() === skill.toLowerCase()
+        )
+          ? selected
+          : [...selected, skill],
+      };
+    });
+    setCustomCompetency("");
   };
 
   const handleSwitchDraft = (id: string) => {
@@ -554,6 +635,8 @@ export function DetailedResumeBuilder({
       answers: {},
       suggestedSkills: [],
       selectedSkills: [],
+      suggestedCompetencies: [],
+      selectedCompetencies: [],
       resume: null,
     });
     saveDraftStore(cleared);
@@ -637,6 +720,7 @@ export function DetailedResumeBuilder({
       if (!res.ok) throw new Error(data.error || t("error"));
 
       const skills: string[] = data.skills || [];
+      const competencies: string[] = data.competencies || [];
       patchDraft((d) => {
         const extras = d.selectedSkills.filter(
           (s) => !skills.some((x) => x.toLowerCase() === s.toLowerCase())
@@ -648,10 +732,25 @@ export function DetailedResumeBuilder({
                 mergedSuggested.some((x) => x.toLowerCase() === s.toLowerCase())
               )
             : skills.slice(0, 8);
+
+        const prevComp = d.selectedCompetencies ?? [];
+        const compExtras = prevComp.filter(
+          (s) => !competencies.some((x) => x.toLowerCase() === s.toLowerCase())
+        );
+        const mergedComp = [...competencies, ...compExtras];
+        const nextComp =
+          prevComp.length > 0
+            ? prevComp.filter((s) =>
+                mergedComp.some((x) => x.toLowerCase() === s.toLowerCase())
+              )
+            : competencies.slice(0, 8);
+
         return {
           ...d,
           suggestedSkills: mergedSuggested,
           selectedSkills: nextSelected,
+          suggestedCompetencies: mergedComp,
+          selectedCompetencies: nextComp,
           step: "skills",
           maxStepIndex: Math.max(d.maxStepIndex, 2),
         };
@@ -664,7 +763,7 @@ export function DetailedResumeBuilder({
   };
 
   const goToSkills = async () => {
-    if (suggestedSkills.length > 0) {
+    if (suggestedSkills.length > 0 || suggestedCompetencies.length > 0) {
       advanceToStep(2);
       return;
     }
@@ -673,12 +772,17 @@ export function DetailedResumeBuilder({
 
   const generateResume = async () => {
     setLoading(true);
+    setLoadingPhase("generating");
     setError("");
     try {
       const answerList: InterviewAnswer[] = questions.map((q) => ({
         questionId: q.id,
         answer: answers[q.id] || "",
       }));
+
+      const includeProjects =
+        questions.some((q) => q.category === "projects") ||
+        Object.values(answers).some((a) => /project/i.test(a));
 
       const res = await fetch("/api/generate-resume", {
         method: "POST",
@@ -687,17 +791,34 @@ export function DetailedResumeBuilder({
           basics,
           answers: answerList,
           selectedSkills,
+          selectedCompetencies,
           language: locale,
+          includeProjects,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t("error"));
-      setAtsResult(null);
+
+      let finalResume = data.resume as ResumeData;
+      let analysis: ATSAnalysis | null = null;
+      try {
+        const polished = await polishResumeWithAts(
+          data.resume,
+          locale,
+          setLoadingPhase
+        );
+        finalResume = polished.resume;
+        analysis = polished.analysis;
+      } catch {
+        // Still show the generated CV if ATS polish fails
+      }
+
+      setAtsResult(analysis);
       setEditingResume(false);
       setResumeBackup(null);
       patchDraft((d) => ({
         ...d,
-        resume: data.resume,
+        resume: finalResume,
         step: "preview",
         maxStepIndex: Math.max(d.maxStepIndex, 4),
       }));
@@ -705,6 +826,7 @@ export function DetailedResumeBuilder({
       setError(e instanceof Error ? e.message : t("error"));
     } finally {
       setLoading(false);
+      setLoadingPhase("generating");
     }
   };
 
@@ -740,7 +862,7 @@ export function DetailedResumeBuilder({
     setAtsLoading(true);
     setError("");
     try {
-      const text = resumeToPlainText(resume);
+      const text = resumeToPlainText(resume, locale);
       const res = await fetch("/api/analyze-resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -765,9 +887,11 @@ export function DetailedResumeBuilder({
     !!basics?.email &&
     !!basics?.targetRole &&
     !!basics &&
+    isValidInternationalPhone(basics.phone) &&
     hasValidExperience(basics) &&
     hasValidEducation(basics);
-  const canProceedSkills = selectedSkills.length > 0;
+  const canProceedSkills =
+    selectedSkills.length > 0 || selectedCompetencies.length > 0;
 
   const canNavigateToStep = (index: number) => index <= maxStepIndex;
 
@@ -998,11 +1122,19 @@ export function DetailedResumeBuilder({
                     />
                   </div>
                   <div>
-                    <Label>{t("phone")}</Label>
+                    <Label>{t("phone")} *</Label>
                     <Input
                       value={basics.phone}
                       onChange={(e) => updateBasics("phone", e.target.value)}
+                      placeholder="+974..."
                     />
+                    <p className="mt-1 text-xs text-[#6b7c93]">{t("phoneHint")}</p>
+                    {basics.phone.trim() &&
+                      !isValidInternationalPhone(basics.phone) && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {t("phoneInvalid")}
+                        </p>
+                      )}
                   </div>
                   <div>
                     <Label>{t("location")}</Label>
@@ -1087,6 +1219,15 @@ export function DetailedResumeBuilder({
                             }
                           />
                         </div>
+                        <div className="sm:col-span-2">
+                          <Label>{t("jobLocation")}</Label>
+                          <Input
+                            value={entry.location || ""}
+                            onChange={(e) =>
+                              updateExperience(entry.id, "location", e.target.value)
+                            }
+                          />
+                        </div>
                         <div>
                           <Label>{t("dateFrom")} *</Label>
                           <Input
@@ -1097,8 +1238,8 @@ export function DetailedResumeBuilder({
                             }
                             max={
                               entry.endDate && !entry.current
-                                ? toMonthInputValue(entry.endDate) || undefined
-                                : undefined
+                                ? toMonthInputValue(entry.endDate) || currentYearMonth()
+                                : currentYearMonth()
                             }
                           />
                         </div>
@@ -1111,8 +1252,16 @@ export function DetailedResumeBuilder({
                               updateExperience(entry.id, "endDate", e.target.value)
                             }
                             min={toMonthInputValue(entry.startDate) || undefined}
+                            max={currentYearMonth()}
                             disabled={entry.current}
                           />
+                          {!entry.current &&
+                            entry.endDate &&
+                            !isMonthNotInFuture(entry.endDate) && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {t("endDateFuture")}
+                              </p>
+                            )}
                         </div>
                       </div>
                       <label className="flex items-center gap-2 text-sm text-[#141f2e]">
@@ -1192,6 +1341,16 @@ export function DetailedResumeBuilder({
                             }
                           />
                         </div>
+                        <div className="sm:col-span-2">
+                          <Label>{t("educationLocation")}</Label>
+                          <Input
+                            value={entry.location || ""}
+                            onChange={(e) =>
+                              updateEducation(entry.id, "location", e.target.value)
+                            }
+                            placeholder={t("educationLocationPlaceholder")}
+                          />
+                        </div>
                         <div>
                           <Label>{t("educationGraduation")} *</Label>
                           <Input
@@ -1200,6 +1359,7 @@ export function DetailedResumeBuilder({
                             onChange={(e) =>
                               updateEducation(entry.id, "graduationDate", e.target.value)
                             }
+                            max={currentYearMonth()}
                           />
                         </div>
                         <div>
@@ -1357,6 +1517,83 @@ export function DetailedResumeBuilder({
                   </Button>
                 </div>
 
+                <div className="space-y-3 border-t border-[#e2e8f0] pt-4">
+                  <div>
+                    <Label className="text-base">{t("references")}</Label>
+                    <p className="mt-1 text-xs text-[#6b7c93]">{t("referencesHint")}</p>
+                  </div>
+                  {(basics.references || []).map((entry, index) => (
+                    <div
+                      key={entry.id}
+                      className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/50 p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-[#002b49]">
+                          {t("references")} {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeReference(entry.id)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          {t("remove")}
+                        </button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>{t("referenceName")} *</Label>
+                          <Input
+                            value={entry.name}
+                            onChange={(e) =>
+                              updateReference(entry.id, "name", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("referenceTitle")}</Label>
+                          <Input
+                            value={entry.title || ""}
+                            onChange={(e) =>
+                              updateReference(entry.id, "title", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("referenceCompany")}</Label>
+                          <Input
+                            value={entry.company || ""}
+                            onChange={(e) =>
+                              updateReference(entry.id, "company", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("phone")}</Label>
+                          <Input
+                            value={entry.phone || ""}
+                            onChange={(e) =>
+                              updateReference(entry.id, "phone", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label>{t("email")}</Label>
+                          <Input
+                            value={entry.email || ""}
+                            onChange={(e) =>
+                              updateReference(entry.id, "email", e.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={addReference}>
+                    <Plus className="h-4 w-4" />
+                    {t("addReference")}
+                  </Button>
+                </div>
+
                 <div>
                   <Label>{t("careerBackground")}</Label>
                   <Textarea
@@ -1420,17 +1657,66 @@ export function DetailedResumeBuilder({
                 </CardTitle>
                 <CardDescription>{t("skillsSelectSubtitle")}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-5">
+              <CardContent className="space-y-6">
                 <div>
-                  <p className="mb-2 text-sm font-medium text-[#002b49]">
-                    {t("skillsSuggested")}
+                  <p className="mb-2 text-sm font-semibold text-[#002b49]">
+                    {t("coreCompetencies")}
                   </p>
+                  <p className="mb-2 text-xs text-[#6b7c93]">{t("coreCompetenciesHint")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(suggestedCompetencies.length
+                      ? suggestedCompetencies
+                      : selectedCompetencies
+                    ).map((skill) => {
+                      const selected = selectedCompetencies.includes(skill);
+                      return (
+                        <button
+                          key={`c-${skill}`}
+                          type="button"
+                          onClick={() => toggleCompetency(skill)}
+                          className={cn(
+                            "rounded-lg border px-3 py-1.5 text-sm transition-all",
+                            selected
+                              ? "border-[#002b49] bg-[#002b49] text-white"
+                              : "border-[#e2e8f0] bg-white text-[#141f2e] hover:border-[#1db4ce]"
+                          )}
+                        >
+                          {selected && <Check className="me-1 inline h-3.5 w-3.5" />}
+                          {skill}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      value={customCompetency}
+                      onChange={(e) => setCustomCompetency(e.target.value)}
+                      placeholder={t("skillPlaceholder")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addCustomCompetency();
+                        }
+                      }}
+                    />
+                    <Button type="button" variant="outline" onClick={addCustomCompetency}>
+                      <Plus className="h-4 w-4" />
+                      {t("addSkill")}
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-[#002b49]">
+                    {t("technicalAdditional")}
+                  </p>
+                  <p className="mb-2 text-xs text-[#6b7c93]">{t("technicalAdditionalHint")}</p>
                   <div className="flex flex-wrap gap-2">
                     {suggestedSkills.map((skill) => {
                       const selected = selectedSkills.includes(skill);
                       return (
                         <button
-                          key={skill}
+                          key={`s-${skill}`}
                           type="button"
                           onClick={() => toggleSkill(skill)}
                           className={cn(
@@ -1449,41 +1735,11 @@ export function DetailedResumeBuilder({
                       <p className="text-sm text-[#6b7c93]">{t("skillsEmptyHint")}</p>
                     )}
                   </div>
-                </div>
-
-                {selectedSkills.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-[#002b49]">
-                      {t("skillsSelected")} ({selectedSkills.length})
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedSkills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#1db4ce]/15 px-2.5 py-1 text-sm text-[#002b49]"
-                        >
-                          {skill}
-                          <button
-                            type="button"
-                            onClick={() => toggleSkill(skill)}
-                            className="rounded p-0.5 hover:bg-[#1db4ce]/25"
-                            aria-label={t("removeExperience")}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <Label>{t("skillsAddCustom")}</Label>
-                  <div className="mt-1 flex gap-2">
+                  <div className="mt-3 flex gap-2">
                     <Input
                       value={customSkill}
                       onChange={(e) => setCustomSkill(e.target.value)}
-                      placeholder={t("skillsAddCustomPlaceholder")}
+                      placeholder={t("skillPlaceholder")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
@@ -1493,25 +1749,33 @@ export function DetailedResumeBuilder({
                     />
                     <Button type="button" variant="outline" onClick={addCustomSkill}>
                       <Plus className="h-4 w-4" />
-                      {t("skillsAddBtn")}
+                      {t("addSkill")}
                     </Button>
                   </div>
                 </div>
 
-                {selectedSkills.length === 0 && (
-                  <p className="text-sm text-amber-700">{t("skillsEmptyHint")}</p>
+                {(selectedCompetencies.length > 0 || selectedSkills.length > 0) && (
+                  <p className="text-sm text-[#6b7c93]">
+                    {t("skillsSelected")}: {selectedCompetencies.length} {t("coreCompetencies").toLowerCase()}, {selectedSkills.length} {t("technicalAdditional").toLowerCase()}
+                  </p>
                 )}
 
-                {suggestedSkills.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={fetchSkills}
-                    disabled={loading}
-                    className="text-xs text-[#6b7c93] underline-offset-2 hover:text-[#1db4ce] hover:underline"
-                  >
-                    {t("regenerate")} {t("stepSkills").toLowerCase()}
-                  </button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchSkills}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t("loadingSkills")}
+                    </>
+                  ) : (
+                    t("refreshSkills")
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -1635,7 +1899,9 @@ export function DetailedResumeBuilder({
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    {t("generating")}
+                    {loadingPhase === "polishing"
+                      ? t("polishingResume")
+                      : t("generating")}
                   </>
                 ) : (
                   <>
@@ -1661,7 +1927,9 @@ export function DetailedResumeBuilder({
                   {loading ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      {t("generating")}
+                      {loadingPhase === "polishing"
+                        ? t("polishingResume")
+                        : t("generating")}
                     </>
                   ) : (
                     <>
@@ -1697,8 +1965,6 @@ export function DetailedResumeBuilder({
                 <ResumeEditor
                   data={resume}
                   onChange={updateResume}
-                  onDone={doneEditingResume}
-                  onCancel={cancelEditingResume}
                 />
               )}
 
@@ -1763,7 +2029,12 @@ export function DetailedResumeBuilder({
                   <ResumePreview
                     data={
                       resume ??
-                      buildTemplatePreviewResume(basics, selectedSkills, locale)
+                      buildTemplatePreviewResume(
+                        basics,
+                        selectedSkills,
+                        locale,
+                        selectedCompetencies
+                      )
                     }
                     template={template}
                     locale={locale}

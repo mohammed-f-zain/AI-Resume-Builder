@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getModel, getOpenAIClient } from "@/lib/openai";
 import { parseResumeFile } from "@/lib/parsers/resume-parser";
+import {
+  breakdownLooksLikeWeights,
+  normalizeAtsAnalysis,
+  normalizeAtsBreakdown,
+  scoreFromBreakdown,
+} from "@/lib/ats-analysis";
 import type { ATSAnalysis } from "@/lib/types";
 
 async function runAtsAnalysis(
@@ -19,23 +25,34 @@ async function runAtsAnalysis(
     messages: [
       {
         role: "system",
-        content: `You are an ATS (Applicant Tracking System) resume expert. Analyze the resume text and provide a detailed ATS compatibility assessment. ${langInstruction}
+        content: `You are an ATS (Applicant Tracking System) resume expert. Analyze the resume text and provide a consistent, evidence-based ATS compatibility assessment. ${langInstruction}
 
-Score each category 0-100:
-- formatting: ATS-parseable layout, no problematic elements
-- keywords: industry-relevant keywords present
-- structure: clear sections, standard headings
+Be deterministic: the same resume text must produce the same scores. Do not invent random variation.
+
+Score EACH category independently from 0–100 (NOT weight percentages like 25/20/10):
+- formatting: ATS-parseable layout, standard headings, no tables/columns issues
+- keywords: industry-relevant keywords present for the implied role
+- structure: clear sections (Summary, Experience, Education, Skills, …), logical order
 - content: quality of achievements, metrics, relevance
 - readability: clarity, conciseness, grammar
 
-Overall score is weighted average (formatting 25%, keywords 20%, structure 20%, content 25%, readability 10%).
+Use this rubric for EVERY category:
+- 90–100: excellent / fully meets ATS expectations
+- 75–89: good with minor gaps
+- 60–74: acceptable but needs improvements
+- 40–59: weak / several gaps
+- 0–39: poor / major issues
 
-Return JSON:
+Overall score will be computed server-side as:
+formatting×0.25 + keywords×0.20 + structure×0.20 + content×0.25 + readability×0.10
+You may still include "score" but category scores are the source of truth.
+
+Return JSON only:
 {
-  "score": number (0-100),
-  "breakdown": { "formatting", "keywords", "structure", "content", "readability" },
-  "suggestions": ["actionable improvement 1", ...],
-  "strengths": ["strength 1", ...]
+  "score": number,
+  "breakdown": { "formatting": 0-100, "keywords": 0-100, "structure": 0-100, "content": 0-100, "readability": 0-100 },
+  "suggestions": ["actionable improvement 1", "…"],
+  "strengths": ["strength 1", "…"]
 }`,
       },
       {
@@ -43,7 +60,8 @@ Return JSON:
         content: `Analyze this resume:\n\n${extractedText.slice(0, 12000)}`,
       },
     ],
-    temperature: 0.5,
+    // Low temperature → stable scores for the same resume text
+    temperature: 0,
   });
 
   const content = completion.choices[0]?.message?.content;
@@ -51,11 +69,24 @@ Return JSON:
     throw new Error("No response from AI");
   }
 
-  const analysis = JSON.parse(content) as Omit<ATSAnalysis, "extractedText">;
-  return {
-    ...analysis,
-    extractedText: extractedText.slice(0, 2000),
-  };
+  const parsed = JSON.parse(content) as Omit<ATSAnalysis, "extractedText">;
+  const breakdown = normalizeAtsBreakdown(parsed.breakdown);
+
+  // Never show weight-echo values as category scores
+  if (breakdownLooksLikeWeights(breakdown)) {
+    throw new Error("Invalid ATS breakdown from model; please retry");
+  }
+
+  const { analysis } = normalizeAtsAnalysis(
+    {
+      ...parsed,
+      breakdown,
+      score: scoreFromBreakdown(breakdown),
+    },
+    extractedText.slice(0, 2000)
+  );
+
+  return analysis;
 }
 
 export async function POST(request: Request) {

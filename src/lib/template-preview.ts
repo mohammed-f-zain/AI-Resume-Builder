@@ -1,14 +1,15 @@
-import type {
-  ResumeBasics,
-  ResumeData,
-} from "@/lib/types";
-import { formatLanguageEntry } from "@/lib/resume-drafts";
+import type { ResumeBasics, ResumeData } from "@/lib/types";
+import {
+  formatLanguageEntry,
+  referenceEntriesToResume,
+} from "@/lib/resume-drafts";
 
-/** Build a lightweight resume from basics for template-step live preview (before AI generation). */
+/** Build a lightweight resume from basics for template-step live preview. */
 export function buildTemplatePreviewResume(
   basics: ResumeBasics,
   selectedSkills: string[],
-  locale: "en" | "ar"
+  locale: "en" | "ar",
+  selectedCompetencies: string[] = []
 ): ResumeData {
   const isAr = locale === "ar";
   const summary = isAr
@@ -19,9 +20,14 @@ export function buildTemplatePreviewResume(
     ? "سيتم إنشاء نقاط الإنجاز التفصيلية بالذكاء الاصطناعي."
     : "Detailed achievement bullets will be written by AI.";
 
-  const mid = Math.ceil(selectedSkills.length / 2) || 0;
-  const technical = selectedSkills.slice(0, mid);
-  const soft = selectedSkills.slice(mid);
+  const competencies =
+    selectedCompetencies.length > 0
+      ? selectedCompetencies
+      : selectedSkills.slice(0, Math.ceil(selectedSkills.length / 2) || 0);
+  const technical =
+    selectedCompetencies.length > 0
+      ? selectedSkills
+      : selectedSkills.slice(Math.ceil(selectedSkills.length / 2));
 
   return {
     contact: {
@@ -37,16 +43,20 @@ export function buildTemplatePreviewResume(
     },
     summary,
     skills: {
+      competencies: competencies.length
+        ? competencies
+        : [isAr ? "كفاءات أساسية" : "Core competencies"],
       technical: technical.length
         ? technical
         : [isAr ? "مهارات تقنية" : "Technical skills"],
-      soft: soft.length ? soft : [isAr ? "مهارات شخصية" : "Soft skills"],
+      soft: [],
     },
     experience: (basics.experience || [])
       .filter((e) => e.position?.trim() || e.company?.trim())
       .map((e) => ({
         title: e.position || (isAr ? "المسمى الوظيفي" : "Job Title"),
         company: e.company || (isAr ? "الشركة" : "Company"),
+        location: e.location || undefined,
         startDate: e.startDate || "",
         endDate: e.current ? "" : e.endDate || "",
         current: !!e.current,
@@ -57,6 +67,7 @@ export function buildTemplatePreviewResume(
       .map((e) => ({
         degree: e.degree || (isAr ? "الدرجة" : "Degree"),
         institution: e.institution || (isAr ? "المؤسسة" : "Institution"),
+        location: e.location || undefined,
         graduationDate: e.graduationDate || "",
         gpa: e.gpa || undefined,
       })),
@@ -70,5 +81,6 @@ export function buildTemplatePreviewResume(
     languages: (basics.languages || [])
       .filter((l) => l.language?.trim())
       .map((l) => formatLanguageEntry(l.language, l.proficiency, locale)),
+    references: referenceEntriesToResume(basics.references || []),
   };
 }
