@@ -25,11 +25,10 @@ interface TemplateProps {
 }
 
 /**
- * Layout modeled on the sample ATS PDFs (HR Qatar + Executive roles):
- * - Name + headline + Location • Phone • Email • LinkedIn (clickable icons)
- * - ALL CAPS section headings with underline
- * - Title on its own line; Company | Location | Dates below
- * - Core Competencies as •-joined text (or bullet list)
+ * CV structure (EN + AR):
+ * Header → Professional Summary → Professional Skills (Soft / Technical)
+ * → Work Experience → Education → Licenses & Certifications
+ * → Projects / Key Achievements → References
  */
 
 function GitHubIcon({ className }: { className?: string }) {
@@ -74,15 +73,15 @@ const sectionLabels = {
   en: {
     summary: "Professional Summary",
     executiveSummary: "Professional Summary",
-    experience: "Experience",
+    experience: "Work Experience",
     education: "Education",
-    skills: "Skills",
+    skills: "Professional Skills",
     technicalSkills: "Technical Skills",
     softSkills: "Soft Skills",
     coreCompetencies: "Core Competencies",
     technicalAdditional: "Technical Skills",
-    projects: "Projects",
-    certifications: "Certifications",
+    projects: "Projects / Key Achievements",
+    certifications: "Licenses & Certifications",
     courses: "Courses",
     languages: "Languages",
     references: "References",
@@ -91,15 +90,15 @@ const sectionLabels = {
   ar: {
     summary: "الملخص المهني",
     executiveSummary: "الملخص المهني",
-    experience: "الخبرة",
+    experience: "الخبرة العملية",
     education: "التعليم",
-    skills: "المهارات",
+    skills: "المهارات المهنية",
     technicalSkills: "المهارات التقنية",
     softSkills: "المهارات الشخصية",
     coreCompetencies: "الكفاءات الأساسية",
     technicalAdditional: "المهارات التقنية",
-    projects: "المشاريع",
-    certifications: "الشهادات",
+    projects: "المشاريع / الإنجازات الرئيسية",
+    certifications: "التراخيص والشهادات",
     courses: "الدورات",
     languages: "اللغات",
     references: "المراجع",
@@ -122,35 +121,55 @@ const bulletListClass =
 const skillGroupClass = "mb-2.5 last:mb-0";
 const skillSubheadClass = "mb-0.5 text-[12px] font-semibold text-slate-700";
 
-/** PDF contact order: Location • Phone • Email • LinkedIn • GitHub • Website (links clickable + icons) */
-function ContactBulletLine({
+/** Up to 3 strongest skills for the header (competencies → technical → soft). */
+function getStrongestSkills(data: ResumeData, limit = 3): string[] {
+  const skills = normalizeResumeSkills(data.skills);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of [
+    ...skills.competencies,
+    ...skills.technical,
+    ...skills.soft,
+  ]) {
+    const t = s.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Header contact: Nationality | Location | Phone | Email | LinkedIn icon */
+function HeaderContactLine({
   contact,
   className,
-  align = "start",
 }: {
   contact: ContactInfo;
   className?: string;
-  align?: "start" | "center";
 }) {
-  type Item = {
-    key: string;
-    node: ReactNode;
-  };
-
+  type Item = { key: string; node: ReactNode };
   const items: Item[] = [];
 
+  if (contact.nationality?.trim()) {
+    items.push({
+      key: "nationality",
+      node: <span>{contact.nationality.trim()}</span>,
+    });
+  }
   if (contact.location?.trim()) {
     items.push({
       key: "location",
       node: (
         <span className="inline-flex items-center gap-1">
-          <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+          <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
           {contact.location.trim()}
         </span>
       ),
     });
   }
-
   if (contact.phone?.trim()) {
     const phone = contact.phone.trim();
     items.push({
@@ -158,7 +177,7 @@ function ContactBulletLine({
       node: (
         <a
           href={`tel:${phone.replace(/\s+/g, "")}`}
-          className="resume-contact-link inline-flex items-center gap-1 text-slate-700 hover:text-[#1db4ce]"
+          className="resume-contact-link inline-flex items-center gap-1 hover:text-[#1db4ce]"
         >
           <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
           {phone}
@@ -166,14 +185,13 @@ function ContactBulletLine({
       ),
     });
   }
-
   if (contact.email?.trim()) {
     items.push({
       key: "email",
       node: (
         <a
           href={`mailto:${contact.email.trim()}`}
-          className="resume-contact-link inline-flex items-center gap-1 text-slate-700 hover:text-[#1db4ce]"
+          className="resume-contact-link inline-flex items-center gap-1 hover:text-[#1db4ce]"
         >
           <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
           {contact.email.trim()}
@@ -181,7 +199,6 @@ function ContactBulletLine({
       ),
     });
   }
-
   if (contact.linkedin?.trim()) {
     items.push({
       key: "linkedin",
@@ -190,17 +207,15 @@ function ContactBulletLine({
           href={normalizeContactUrl(contact.linkedin, "linkedin")}
           target="_blank"
           rel="noopener noreferrer"
-          className="resume-contact-link inline-flex items-center gap-1 text-slate-700 hover:text-[#1db4ce]"
+          className="resume-contact-link inline-flex items-center hover:text-[#1db4ce]"
           aria-label="LinkedIn"
           title="LinkedIn"
         >
-          <LinkedInIcon className="h-3.5 w-3.5 shrink-0" />
-          <span>LinkedIn</span>
+          <LinkedInIcon className="h-4 w-4 shrink-0" />
         </a>
       ),
     });
   }
-
   if (contact.github?.trim()) {
     items.push({
       key: "github",
@@ -209,17 +224,15 @@ function ContactBulletLine({
           href={normalizeContactUrl(contact.github, "github")}
           target="_blank"
           rel="noopener noreferrer"
-          className="resume-contact-link inline-flex items-center gap-1 text-slate-700 hover:text-[#1db4ce]"
+          className="resume-contact-link inline-flex items-center hover:text-[#1db4ce]"
           aria-label="GitHub"
           title="GitHub"
         >
-          <GitHubIcon className="h-3.5 w-3.5 shrink-0" />
-          <span>GitHub</span>
+          <GitHubIcon className="h-4 w-4 shrink-0" />
         </a>
       ),
     });
   }
-
   if (contact.website?.trim()) {
     items.push({
       key: "website",
@@ -228,12 +241,11 @@ function ContactBulletLine({
           href={normalizeContactUrl(contact.website, "website")}
           target="_blank"
           rel="noopener noreferrer"
-          className="resume-contact-link inline-flex items-center gap-1 text-slate-700 hover:text-[#1db4ce]"
+          className="resume-contact-link inline-flex items-center hover:text-[#1db4ce]"
           aria-label="Website"
           title="Website"
         >
           <Globe className="h-3.5 w-3.5 shrink-0" />
-          <span>Website</span>
         </a>
       ),
     });
@@ -244,14 +256,19 @@ function ContactBulletLine({
   return (
     <p
       className={cn(
-        "flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] leading-relaxed text-slate-700",
-        align === "center" && "justify-center text-center",
+        "flex flex-wrap items-center justify-center gap-x-0 gap-y-1 text-[12px] italic leading-relaxed text-slate-700",
         className
       )}
     >
       {items.map((item, i) => (
         <span key={item.key} className="inline-flex items-center">
-          {i > 0 && <span className="mx-1.5 text-slate-400">•</span>}
+          {i > 0 && (
+            <span className="mx-1.5 text-slate-400" aria-hidden>
+              {i === items.length - 1 && items[i]?.key === "linkedin"
+                ? "||"
+                : "|"}
+            </span>
+          )}
           {item.node}
         </span>
       ))}
@@ -260,70 +277,62 @@ function ContactBulletLine({
 }
 
 function AtsHeader({
-  contact,
+  data,
   className,
   nameClassName,
   headlineClassName,
-  align = "start",
-  nameUppercase,
+  nameUppercase = true,
 }: {
-  contact: ContactInfo;
+  data: ResumeData;
   className?: string;
   nameClassName?: string;
   headlineClassName?: string;
-  align?: "start" | "center";
   nameUppercase?: boolean;
 }) {
+  const contact = data.contact;
   const photo = contact.photoDataUrl?.trim();
   const displayName = nameUppercase
     ? contact.fullName.toUpperCase()
     : contact.fullName;
+  const strongest = getStrongestSkills(data, 3);
 
   return (
-    <header className={cn("resume-header mb-5", className)}>
-      <div
+    <header className={cn("resume-header mb-5 text-center", className)}>
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo}
+          alt=""
+          className="resume-photo mx-auto mb-3 h-24 w-24 rounded object-cover print:h-24 print:w-24"
+        />
+      ) : null}
+      <h1
         className={cn(
-          "flex gap-4",
-          align === "center"
-            ? "flex-col items-center text-center"
-            : "items-start justify-between"
+          "text-[24px] font-bold leading-tight tracking-wide text-black",
+          nameClassName
         )}
       >
-        <div className={cn("min-w-0 flex-1", align === "center" && "w-full")}>
-          <h1
-            className={cn(
-              "text-[26px] font-bold leading-tight tracking-tight text-black",
-              nameClassName
-            )}
-          >
-            {displayName}
-          </h1>
-          {contact.headline?.trim() && (
-            <p
-              className={cn(
-                "mt-1 text-[14px] font-medium leading-snug text-slate-800",
-                headlineClassName
-              )}
-            >
-              {contact.headline}
-            </p>
+        {displayName}
+      </h1>
+      {contact.headline?.trim() && (
+        <p
+          className={cn(
+            "mt-1.5 text-[14px] font-bold leading-snug text-slate-900",
+            headlineClassName
           )}
-          <ContactBulletLine contact={contact} align={align} className="mt-1.5" />
-        </div>
-        {photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photo}
-            alt=""
-            className="resume-photo h-24 w-24 shrink-0 rounded object-cover print:h-24 print:w-24"
-          />
-        )}
-      </div>
+        >
+          {contact.headline.trim()}
+        </p>
+      )}
+      {strongest.length > 0 && (
+        <p className="mt-1.5 text-[12px] italic leading-snug text-slate-700">
+          {strongest.join(" | ")}
+        </p>
+      )}
+      <HeaderContactLine contact={contact} className="mt-2" />
     </header>
   );
 }
-
-type ExperienceLayout = "sample" | "two-line" | "inline";
 
 function ResumeBody({
   data,
@@ -508,28 +517,17 @@ function ExperienceSection({
           labels.present,
           locale
         );
-
-        const companyLine = [exp.company, exp.location]
+        const meta = [exp.title, exp.company, exp.location, dateRange]
+          .map((s) => (s || "").trim())
           .filter(Boolean)
-          .join(" - ");
+          .join(" / ");
         const bullets = (exp.bullets || []).filter((b) => b.trim());
 
         return (
           <div key={i} className={entryClass}>
             <p className="text-[13px] font-bold leading-[1.55] text-black">
-              {exp.title}
-              {dateRange ? (
-                <span className="font-normal text-slate-700">
-                  {" | "}
-                  {dateRange}
-                </span>
-              ) : null}
+              {meta}
             </p>
-            {companyLine ? (
-              <p className="text-[13px] leading-[1.55] text-slate-500">
-                {companyLine}
-              </p>
-            ) : null}
             {bullets.length > 0 ? (
               <ul className={bulletListClass}>
                 {bullets.map((b, j) => (
@@ -563,14 +561,14 @@ function EducationSection({
         const institutionPart = [edu.institution, edu.location]
           .filter(Boolean)
           .join(", ");
-        const main = [edu.degree, institutionPart].filter(Boolean).join(" - ");
         const years = edu.graduationDate
           ? ` (${formatResumeDate(edu.graduationDate, locale)})`
           : "";
         return (
           <div key={i} className={entryClass}>
             <p className={bodyTextClass}>
-              <span className="font-bold text-black">{main}</span>
+              <span className="font-bold text-black">{edu.degree}</span>
+              {institutionPart ? ` - ${institutionPart}` : ""}
               {years}
               {edu.gpa ? ` | GPA: ${edu.gpa}` : ""}
             </p>
@@ -735,11 +733,14 @@ function SkillsSection({
   competenciesAsBullets?: boolean;
 }) {
   const skills = normalizeResumeSkills(data.skills);
-  const competencies = skills.competencies.filter((s) => s.trim());
-  const technical = skills.technical.filter((s) => s.trim());
+  // Technical = role competencies + tools; Soft = soft skills
+  const technical = [
+    ...skills.competencies,
+    ...skills.technical,
+  ].filter((s) => s.trim());
   const soft = skills.soft.filter((s) => s.trim());
 
-  if (!competencies.length && !technical.length && !soft.length) return null;
+  if (!technical.length && !soft.length) return null;
 
   const renderSkillGroup = (
     title: string,
@@ -763,15 +764,10 @@ function SkillsSection({
   return (
     <section className={sectionClass}>
       <Heading>{labels.skills}</Heading>
-      {competencies.length > 0 &&
-        renderSkillGroup(
-          labels.coreCompetencies,
-          competencies,
-          !!competenciesAsBullets
-        )}
+      {soft.length > 0 &&
+        renderSkillGroup(labels.softSkills, soft, !!competenciesAsBullets)}
       {technical.length > 0 &&
         renderSkillGroup(labels.technicalSkills, technical, false)}
-      {soft.length > 0 && renderSkillGroup(labels.softSkills, soft, false)}
     </section>
   );
 }
@@ -868,7 +864,7 @@ export function ClassicTemplate({ data, locale = "en" }: TemplateProps) {
   const labels = getLabels(locale);
   return (
     <div className="resume-template mx-auto max-w-[800px] bg-white px-9 py-8 font-sans text-black">
-      <AtsHeader contact={data.contact} nameUppercase />
+      <AtsHeader data={data} nameUppercase />
       <ResumeBody
         data={data}
         labels={labels}
@@ -885,9 +881,9 @@ export function ModernTemplate({ data, locale = "en" }: TemplateProps) {
   return (
     <div className="resume-template mx-auto max-w-[800px] bg-white px-9 py-8 font-sans text-black">
       <AtsHeader
-        contact={data.contact}
+        data={data}
         nameClassName="text-[#002b49]"
-        headlineClassName="text-slate-700"
+        headlineClassName="text-slate-800"
       />
       <ResumeBody
         data={data}
@@ -905,7 +901,7 @@ export function MinimalTemplate({ data, locale = "en" }: TemplateProps) {
   return (
     <div className="resume-template mx-auto max-w-[800px] bg-white px-10 py-10 font-sans text-black">
       <AtsHeader
-        contact={data.contact}
+        data={data}
         className="mb-7"
         nameClassName="text-[28px] font-semibold tracking-tight"
       />
@@ -919,12 +915,12 @@ export function MinimalTemplate({ data, locale = "en" }: TemplateProps) {
   );
 }
 
-/** Executive — Executive Summary + bullet core competencies. */
+/** Executive — Professional Summary + skills bullets option. */
 export function ExecutiveTemplate({ data, locale = "en" }: TemplateProps) {
   const labels = getLabels(locale);
   return (
     <div className="resume-template mx-auto max-w-[800px] bg-white px-9 py-8 font-sans text-black">
-      <AtsHeader contact={data.contact} />
+      <AtsHeader data={data} />
       <ResumeBody
         data={data}
         labels={labels}
@@ -943,9 +939,9 @@ export function CreativeTemplate({ data, locale = "en" }: TemplateProps) {
   return (
     <div className="resume-template mx-auto max-w-[800px] bg-white px-9 py-8 font-sans text-black">
       <AtsHeader
-        contact={data.contact}
+        data={data}
         nameClassName="text-[#002b49]"
-        headlineClassName="text-slate-700"
+        headlineClassName="text-slate-800"
       />
       <ResumeBody
         data={data}

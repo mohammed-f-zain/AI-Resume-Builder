@@ -13,18 +13,24 @@ import {
 
 export const DEFAULT_SECTION_ORDER: BuiltinSectionId[] = [
   "summary",
-  "competencies",
+  "competencies", // Professional Skills (soft + technical rendered together)
   "experience",
-  "projects",
   "education",
   "certifications",
-  "technical",
-  "languages",
+  "projects",
   "references",
 ];
 
 export const ALL_BUILTIN_SECTIONS: BuiltinSectionId[] = [
-  ...DEFAULT_SECTION_ORDER,
+  "summary",
+  "competencies",
+  "technical",
+  "experience",
+  "education",
+  "certifications",
+  "projects",
+  "languages",
+  "references",
   "courses",
 ];
 

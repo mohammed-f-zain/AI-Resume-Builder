@@ -39,6 +39,7 @@ import type {
   GuidedQuestion,
   GuidedAnswer,
   LanguageEntry,
+  ExperienceEntry,
   ATSAnalysis,
 } from "@/lib/types";
 import {
@@ -47,6 +48,9 @@ import {
   LANGUAGE_PROFICIENCIES,
   languageProficiencyLabel,
   createEmptyLanguage,
+  createEmptyExperience,
+  currentYearMonth,
+  isMonthNotInFuture,
   deleteDraft,
   draftDisplayName,
   draftHasContent,
@@ -134,6 +138,27 @@ function TemplatePicker({
       ))}
     </div>
   );
+}
+
+function toMonthInputValue(value: string): string {
+  const v = value.trim();
+  if (/^\d{4}-\d{2}$/.test(v)) return v;
+  if (/^\d{4}$/.test(v)) return `${v}-01`;
+  return "";
+}
+
+function preferBasicsExperience(
+  basicsExp: ExperienceEntry[],
+  extractedExp: ExperienceEntry[]
+): ExperienceEntry[] {
+  const hasBasics = basicsExp.some(
+    (e) => e.position.trim() || e.company.trim()
+  );
+  if (hasBasics) return basicsExp;
+  const hasExtracted = extractedExp.some(
+    (e) => e.position.trim() || e.company.trim()
+  );
+  return hasExtracted ? extractedExp : basicsExp;
 }
 
 export function GuidedResumeBuilder({
@@ -225,13 +250,55 @@ export function GuidedResumeBuilder({
   };
 
   const updateBasics = (
-    field: keyof Omit<ResumeBasics, "experience" | "education" | "languages" | "certificates">,
+    field: keyof Omit<
+      ResumeBasics,
+      "experience" | "education" | "languages" | "certificates" | "references"
+    >,
     value: string
   ) => {
     patchDraft((d) => ({
       ...d,
       basics: normalizeBasics({ ...d.basics, [field]: value }),
     }));
+  };
+
+  const updateExperience = (
+    id: string,
+    field: keyof ExperienceEntry,
+    value: string | boolean
+  ) => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        experience: d.basics.experience.map((e) =>
+          e.id === id ? { ...e, [field]: value } : e
+        ),
+      }),
+    }));
+  };
+
+  const addExperience = () => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        experience: [...d.basics.experience, createEmptyExperience()],
+      }),
+    }));
+  };
+
+  const removeExperience = (id: string) => {
+    patchDraft((d) => {
+      const next = d.basics.experience.filter((e) => e.id !== id);
+      return {
+        ...d,
+        basics: normalizeBasics({
+          ...d.basics,
+          experience: next.length ? next : [createEmptyExperience()],
+        }),
+      };
+    });
   };
 
   const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => {
@@ -304,11 +371,10 @@ export function GuidedResumeBuilder({
           ...d,
           basics: normalizeBasics({
             ...d.basics,
-            experience: extracted.experience.some(
-              (e) => e.position.trim() || e.company.trim()
-            )
-              ? extracted.experience
-              : d.basics.experience,
+            experience: preferBasicsExperience(
+              d.basics.experience,
+              extracted.experience
+            ),
             education: extracted.education.length
               ? extracted.education
               : d.basics.education,
@@ -424,11 +490,10 @@ export function GuidedResumeBuilder({
       ...d,
       basics: normalizeBasics({
         ...d.basics,
-        experience: extracted.experience.some(
-          (e) => e.position.trim() || e.company.trim()
-        )
-          ? extracted.experience
-          : d.basics.experience,
+        experience: preferBasicsExperience(
+          d.basics.experience,
+          extracted.experience
+        ),
         education: extracted.education.length
           ? extracted.education
           : d.basics.education,
@@ -456,11 +521,10 @@ export function GuidedResumeBuilder({
       const extracted = extractFromGuidedAnswers(guidedQuestions, guidedAnswers);
       const mergedBasics = normalizeBasics({
         ...basics,
-        experience: extracted.experience.some(
-          (e) => e.position.trim() || e.company.trim()
-        )
-          ? extracted.experience
-          : basics.experience,
+        experience: preferBasicsExperience(
+          basics.experience,
+          extracted.experience
+        ),
         education: extracted.education.length
           ? extracted.education
           : basics.education,
@@ -913,6 +977,16 @@ export function GuidedResumeBuilder({
                     />
                   </div>
                   <div>
+                    <Label>{t("nationality")}</Label>
+                    <Input
+                      value={basics.nationality || ""}
+                      onChange={(e) =>
+                        updateBasics("nationality", e.target.value)
+                      }
+                      placeholder={t("nationalityPlaceholder")}
+                    />
+                  </div>
+                  <div>
                     <Label>{t("linkedin")}</Label>
                     <Input
                       value={basics.linkedin}
@@ -941,6 +1015,138 @@ export function GuidedResumeBuilder({
                       placeholder={t("guidedJobPlaceholder")}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-3 border-t border-[#e2e8f0] pt-4">
+                  <div>
+                    <Label className="text-base">{t("workExperience")}</Label>
+                    <p className="mt-1 text-xs text-[#6b7c93]">
+                      {t("workExperienceHint")}
+                    </p>
+                  </div>
+                  {basics.experience.map((entry, index) => (
+                    <div
+                      key={entry.id}
+                      className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/50 p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-[#002b49]">
+                          {t("workExperience")} {index + 1}
+                        </span>
+                        {basics.experience.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeExperience(entry.id)}
+                            className="text-xs text-red-600 hover:underline"
+                          >
+                            {t("removeExperience")}
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>{t("jobPosition")}</Label>
+                          <Input
+                            value={entry.position}
+                            onChange={(e) =>
+                              updateExperience(
+                                entry.id,
+                                "position",
+                                e.target.value
+                              )
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("company")}</Label>
+                          <Input
+                            value={entry.company}
+                            onChange={(e) =>
+                              updateExperience(
+                                entry.id,
+                                "company",
+                                e.target.value
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label>{t("jobLocation")}</Label>
+                          <Input
+                            value={entry.location || ""}
+                            onChange={(e) =>
+                              updateExperience(
+                                entry.id,
+                                "location",
+                                e.target.value
+                              )
+                            }
+                            placeholder={t("jobLocationPlaceholder")}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("dateFrom")}</Label>
+                          <Input
+                            type="month"
+                            value={toMonthInputValue(entry.startDate)}
+                            onChange={(e) =>
+                              updateExperience(
+                                entry.id,
+                                "startDate",
+                                e.target.value
+                              )
+                            }
+                            max={
+                              entry.endDate && !entry.current
+                                ? toMonthInputValue(entry.endDate) ||
+                                  currentYearMonth()
+                                : currentYearMonth()
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>{t("dateTo")}</Label>
+                          <Input
+                            type="month"
+                            value={toMonthInputValue(entry.endDate)}
+                            disabled={!!entry.current}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (!isMonthNotInFuture(v)) return;
+                              updateExperience(entry.id, "endDate", v);
+                            }}
+                            min={
+                              toMonthInputValue(entry.startDate) || undefined
+                            }
+                            max={currentYearMonth()}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                          <input
+                            type="checkbox"
+                            checked={!!entry.current}
+                            onChange={(e) =>
+                              updateExperience(
+                                entry.id,
+                                "current",
+                                e.target.checked
+                              )
+                            }
+                          />
+                          {t("currentlyWorking")}
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addExperience}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t("addExperience")}
+                  </Button>
                 </div>
 
                 <div className="space-y-3 border-t border-[#e2e8f0] pt-4">

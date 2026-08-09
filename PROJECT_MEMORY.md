@@ -95,25 +95,25 @@ All templates are **single-column ATS-friendly** (no sidebars / 2-column layouts
 
 Default order (editable in Resume Editor via drag-and-drop):
 
-1. Summary  
-2. Skills (subsections: Core Competencies, Technical Skills, Soft Skills)  
-3. Experience (`Title | MMM YYYY – MMM YYYY`, then light-gray `Company - Location`)  
-4. Projects (optional)  
-5. Education (`Degree - Institution, Location (MMM YYYY)`)  
-6. Certifications  
-7. Languages (optional)  
+1. Header — name, headline (roles), up to 3 strongest skills, Nationality | Location | Phone | Email | LinkedIn icon  
+2. Professional Summary  
+3. Professional Skills (Soft Skills + Technical Skills)  
+4. Work Experience (`Position / Company / Location / Dates` + bullets)  
+5. Education (`**Degree** - Institution, Location (date)`)  
+6. Licenses & Certifications  
+7. Projects / Key Achievements (optional)  
 8. References (optional)
 
-**ATS headings:** Professional Summary, Experience, Education, Skills, Projects, Certifications, Languages, References (rendered uppercase with underline).  
+**ATS headings:** Professional Summary, Work Experience, Education, Professional Skills, Licenses & Certifications, Projects / Key Achievements, References (rendered uppercase with underline).  
 **Formatting:** shared section/entry spacing and bullet lists (`list-disc`, consistent `leading-[1.55]`).  
 **Dates:** display as `MMM YYYY` (e.g. Jan 2024); stored as `YYYY-MM` from forms; see `src/lib/format-resume-date.ts`.
 
 **Editor:** Add missing built-ins or custom sections; reorder via HTML5 DnD. Contact header stays fixed.  
-**Data:** `sectionOrder?: string[]`, `customSections?: { id, heading, content }[]` — see `src/lib/resume-sections.ts`.
+**Data:** `sectionOrder?: string[]`, `customSections?: { id, heading, content }[]`, `contact.nationality` — see `src/lib/resume-sections.ts`.
 
-**Header:** name, headline (target role), clickable `Location • Phone • Email • LinkedIn` with icons, optional personal photo.
+**Header:** centered; LinkedIn/GitHub/Website as icons only (not long URLs).
 
-**Skills model:** `skills.competencies` + `skills.technical` + `skills.soft` under one **Skills** heading  
+**Skills model:** `skills.competencies` + `skills.technical` + `skills.soft` under one **Professional Skills** heading (Soft + Technical)  
 **References:** optional on basics + ResumeData; never invented by AI.
 
 ## API Endpoints
@@ -177,21 +177,21 @@ Default order (editable in Resume Editor via drag-and-drop):
 ## Resume Builder Flow
 
 ### Mode picker (`/builder`, mode `null`)
-1. **First:** Quick Guided + Detailed cards  
+1. **First:** Fresh to Med - Level + Senior professional – C Level Executive cards  
 2. **Second:** My Resumes (max 2 visible; “Show more” expands; Continue / Delete)  
 3. Opening Resume Builder via nav/home (`/builder?select=1`) shows the mode picker (drafts preserved; Continue resumes a saved CV)  
 4. Hydrate does **not** clear mode on every remount (avoids Fast Refresh wiping mid-session)  
 5. “Change writing mode” sets `mode: null`, `step: "mode"` (normalizeDraft must **not** re-infer mode when on picker)
 
-### Mode A — Quick Guided
-1. Basics — contact (phone required international `+`/`00`), LinkedIn optional, optional photo, target job, optional languages  
-2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups (optional job location, “I currently work here”, end date not in future) + Other  
+### Mode A — Fresh to Med - Level (guided)
+1. Basics — contact (phone required international `+`/`00`), LinkedIn optional, optional photo, target job, **Experience** (position, company, **location**, dates), optional languages  
+2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups (job location, “I currently work here”, end date not in future) + Other  
 3. After interview is finished, revisiting **AI Interview** shows **all Q&A** in editable review mode  
 4. Template → generate → **auto ATS polish** (`/api/polish-resume`) → Preview (Edit with Done/Cancel; optional re-score; Download PDF)  
 5. Projects section only if a projects topic was asked
 
-### Mode B — Detailed
-1. Your Info — same phone/LinkedIn/experience location/end-date rules; education; languages; certificates  
+### Mode B — Senior professional – C Level Executive (detailed)
+1. Your Info — same phone/LinkedIn/experience **location**/end-date rules; education; languages; certificates  
 2. AI Interview — free-text  
 3. Skills — AI multi-select  
 4. Template → generate → **auto ATS polish** → Preview
@@ -212,6 +212,15 @@ Default order (editable in Resume Editor via drag-and-drop):
 - CV text via `formatLanguageEntry(..., locale)`
 
 ## Changelog
+
+### 2026-08-09 — CV structure: header + section order
+- Header: name, roles, top 3 skills, nationality/location/phone/email, LinkedIn icon
+- Order: Summary → Professional Skills (Soft/Technical) → Work Experience → Education → Licenses & Certifications → Projects/Key Achievements → References
+- Experience line: Position / Company / Location / Dates; Education: bold degree – university, location (date)
+
+### 2026-08-09 — Mode rename + experience location
+- Quick Guided → Fresh to Med - Level; Detailed → Senior professional – C Level Executive
+- Experience location on both modes (Guided basics form + Detailed; interview follow-ups)
 
 ### 2026-07-24 — Fix polish ATS breakdown + Experience heading
 - Reverted CV heading to Experience (not Work Experience)

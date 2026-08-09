@@ -128,7 +128,7 @@ ${history.length ? JSON.stringify(history, null, 2) : "(none yet — ask the fir
 2. Do NOT re-ask information already answered above.
 3. Do NOT invent tech stacks for non-tech jobs (no React for plumbers; no pipe fittings for software engineers).
 4. Prefer concrete options a person in that field would recognize.
-5. For prior employment: yes_no with followUp fields company, position, location (optional), startDate, endDate (allowMultiple true). The UI adds "I currently work here" for endDate — do not invent fake end dates when current.
+5. For prior employment: yes_no with followUp fields company, position, location (city/country — always include this field), startDate, endDate (allowMultiple true). The UI adds "I currently work here" for endDate — do not invent fake end dates when current. If the user already filled experience on the basics form, you may skip re-asking full employment details.
 6. For education: yes_no or single_choice with followUp degree, institution, location (optional), graduationDate when useful.
 7. Ask ONE multi_choice for role core competencies (category "skills", topic job_skills_tools) and ONE for tools/tech/soft skills (category "technologies") when useful.
 8. Skip spoken languages if already provided.
@@ -159,7 +159,7 @@ If more questions needed:
       "fields": [
         { "id": "company", "label": "...", "inputType": "text", "required": true },
         { "id": "position", "label": "...", "inputType": "text", "required": true },
-        { "id": "location", "label": "...", "inputType": "text", "required": false },
+        { "id": "location", "label": "Location / City", "inputType": "text", "required": false },
         { "id": "startDate", "label": "...", "inputType": "month", "required": true },
         { "id": "endDate", "label": "...", "inputType": "month", "required": false }
       ]

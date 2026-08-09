@@ -1013,6 +1013,14 @@ export function ResumeEditor({
               />
             </div>
             <div className="min-w-0">
+              <Label>{t("nationality")}</Label>
+              <Input
+                value={data.contact.nationality || ""}
+                onChange={(e) => updateContact("nationality", e.target.value)}
+                placeholder={t("nationalityPlaceholder")}
+              />
+            </div>
+            <div className="min-w-0">
               <Label>{t("linkedin")}</Label>
               <Input
                 value={data.contact.linkedin || ""}

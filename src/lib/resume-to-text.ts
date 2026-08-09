@@ -27,14 +27,24 @@ export function resumeToPlainText(
 
   lines.push(c.fullName || "");
   if (c.headline) lines.push(c.headline);
+  const skillsPreview = normalizeResumeSkills(data.skills);
+  const topSkills = [
+    ...skillsPreview.competencies,
+    ...skillsPreview.technical,
+    ...skillsPreview.soft,
+  ]
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (topSkills.length) lines.push(topSkills.join(" | "));
   lines.push(
-    [c.email, c.phone, c.location, c.linkedin, c.github, c.website]
+    [c.nationality, c.location, c.phone, c.email, c.linkedin, c.github, c.website]
       .filter(Boolean)
       .join(" | ")
   );
   lines.push("");
 
-  const skills = normalizeResumeSkills(data.skills);
+  const skills = skillsPreview;
   const order = normalizeSectionOrder(data);
   const customs = normalizeCustomSections(data.customSections);
   const coursesSeparate = order.includes("courses");
@@ -68,29 +78,27 @@ export function resumeToPlainText(
       case "technical": {
         if (skillsRendered) break;
         skillsRendered = true;
-        const competencies = skills.competencies.filter((s) => s.trim());
-        const technical = skills.technical.filter((s) => s.trim());
+        const technical = [
+          ...skills.competencies,
+          ...skills.technical,
+        ].filter((s) => s.trim());
         const soft = skills.soft.filter((s) => s.trim());
-        if (!competencies.length && !technical.length && !soft.length) break;
-        lines.push("SKILLS");
-        if (competencies.length) {
-          lines.push("Core Competencies:");
-          lines.push(competencies.join(" • "));
+        if (!technical.length && !soft.length) break;
+        lines.push("PROFESSIONAL SKILLS");
+        if (soft.length) {
+          lines.push("Soft Skills:");
+          lines.push(soft.join(" • "));
         }
         if (technical.length) {
           lines.push("Technical Skills:");
           lines.push(technical.join(" • "));
-        }
-        if (soft.length) {
-          lines.push("Soft Skills:");
-          lines.push(soft.join(" • "));
         }
         lines.push("");
         break;
       }
       case "experience":
         if (data.experience?.length) {
-          lines.push("EXPERIENCE");
+          lines.push("WORK EXPERIENCE");
           for (const exp of data.experience) {
             const dates = formatResumeDateRange(
               exp.startDate,
@@ -99,11 +107,11 @@ export function resumeToPlainText(
               present,
               locale
             );
-            lines.push(`${exp.title}${dates ? ` | ${dates}` : ""}`);
-            const companyLine = [exp.company, exp.location]
-              .filter(Boolean)
-              .join(" - ");
-            if (companyLine) lines.push(companyLine);
+            lines.push(
+              [exp.title, exp.company, exp.location, dates]
+                .filter(Boolean)
+                .join(" / ")
+            );
             for (const b of exp.bullets || []) {
               if (b.trim()) lines.push(`• ${b}`);
             }
@@ -113,7 +121,7 @@ export function resumeToPlainText(
         break;
       case "projects":
         if (data.projects?.length) {
-          lines.push("PROJECTS");
+          lines.push("PROJECTS / KEY ACHIEVEMENTS");
           for (const p of data.projects) {
             lines.push(p.name + (p.url ? ` (${p.url})` : ""));
             if (p.description) lines.push(p.description);
@@ -150,7 +158,7 @@ export function resumeToPlainText(
           ? []
           : (data.courses ?? []).filter((x) => x.trim());
         if (certs.length || courses.length) {
-          lines.push("CERTIFICATIONS");
+          lines.push("LICENSES & CERTIFICATIONS");
           for (const cert of certs) {
             if (cert.name.trim()) lines.push(`• ${cert.name}`);
           }

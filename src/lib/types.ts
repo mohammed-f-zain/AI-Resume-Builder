@@ -7,6 +7,8 @@ export interface ContactInfo {
   email: string;
   phone: string;
   location: string;
+  /** Optional nationality shown in the header contact line. */
+  nationality?: string;
   linkedin?: string;
   github?: string;
   website?: string;
@@ -180,6 +182,8 @@ export interface ResumeBasics {
   email: string;
   phone: string;
   location: string;
+  /** Optional nationality for the CV header. */
+  nationality?: string;
   linkedin?: string;
   github?: string;
   website?: string;

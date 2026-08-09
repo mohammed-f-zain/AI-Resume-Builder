@@ -35,6 +35,7 @@ export function buildTemplatePreviewResume(
       email: basics.email || "email@example.com",
       phone: basics.phone || "",
       location: basics.location || "",
+      nationality: basics.nationality || undefined,
       linkedin: basics.linkedin || undefined,
       github: basics.github || undefined,
       website: basics.website || undefined,

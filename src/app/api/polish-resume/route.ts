@@ -42,6 +42,8 @@ function mergeAuthoritativeContact(
       email: original.contact.email,
       phone: original.contact.phone || improved.contact?.phone,
       location: original.contact.location || improved.contact?.location,
+      nationality:
+        original.contact.nationality || improved.contact?.nationality,
       linkedin: original.contact.linkedin || improved.contact?.linkedin,
       github: original.contact.github || improved.contact?.github,
       website: original.contact.website || improved.contact?.website,

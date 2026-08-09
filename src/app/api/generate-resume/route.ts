@@ -14,6 +14,7 @@ import {
   formatLanguageEntry,
   referenceEntriesToResume,
 } from "@/lib/resume-drafts";
+import { DEFAULT_SECTION_ORDER } from "@/lib/resume-sections";
 
 /** Strip bulky file payloads before sending basics to the model. */
 function basicsForAI(basics: ResumeBasics): Omit<ResumeBasics, "certificates"> & {
@@ -107,8 +108,17 @@ export async function POST(request: Request) {
 
 Produce an accurate ATS-optimized resume for: "${targetRole}".
 
-## Section content (templates use standard ATS headings: Summary, Experience, Education, Skills, …)
-Populate skills as three groups under Skills: competencies (role-specific), technical, soft.
+## CV structure (templates render this order)
+1. Header: name, headline (1–3 related titles separated by " / "), top skills
+2. Professional Summary
+3. Professional Skills — soft + technical (put role competencies into technical)
+4. Work Experience — title, company, location, dates, bullets
+5. Education — degree, institution, location, graduation date
+6. Licenses & Certifications
+7. Projects / Key Achievements (optional)
+8. References (ONLY if provided — never invent)
+
+Populate skills as: competencies (role-specific), technical (tools), soft.
 
 ## Quality standards
 
@@ -122,7 +132,7 @@ ${experienceEntries
   )
   .join("\n") || "- (see basics.experience)"}
 
-3. **skills.competencies** — role-specific domain competencies:
+3. **skills.competencies** — up to ~8 strongest role competencies (first 3 appear in the header):
 ${competenciesList.length ? competenciesList.map((s) => `- ${s}`).join("\n") : "- (derive from answers for this role)"}
 
 4. **skills.technical** / **skills.soft** — tools/systems and soft skills:
@@ -136,10 +146,10 @@ ${educationEntries
   )
   .join("\n") || "- (see basics.education)"}
 
-6. Certifications — use provided names:
+6. Licenses & Certifications — use provided names:
 ${certificateEntries.map((c) => `- ${c.name}`).join("\n") || "- (none provided)"}
 
-7. Keyword-rich Summary — 3–4 sentences for "${targetRole}".
+7. Keyword-rich Professional Summary — 3–4 sentences for "${targetRole}".
 
 ${projectsRule}
 
@@ -307,6 +317,11 @@ Return JSON:
       email: basics.email,
       phone: basics.phone || resumeData.contact?.phone,
       location: basics.location || resumeData.contact?.location,
+      nationality:
+        (typeof basics.nationality === "string" &&
+          basics.nationality.trim()) ||
+        resumeData.contact?.nationality ||
+        undefined,
       linkedin: basics.linkedin || resumeData.contact?.linkedin,
       github: basics.github || resumeData.contact?.github,
       website: basics.website || resumeData.contact?.website,
@@ -320,6 +335,9 @@ Return JSON:
         resumeData.contact?.photoDataUrl ||
         undefined,
     };
+
+    // Apply standard CV section order for both builder modes
+    resumeData.sectionOrder = [...DEFAULT_SECTION_ORDER];
 
     return NextResponse.json({ resume: resumeData });
   } catch (error) {

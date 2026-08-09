@@ -1144,6 +1144,16 @@ export function DetailedResumeBuilder({
                     />
                   </div>
                   <div>
+                    <Label>{t("nationality")}</Label>
+                    <Input
+                      value={basics.nationality || ""}
+                      onChange={(e) =>
+                        updateBasics("nationality", e.target.value)
+                      }
+                      placeholder={t("nationalityPlaceholder")}
+                    />
+                  </div>
+                  <div>
                     <Label>{t("linkedin")}</Label>
                     <Input
                       value={basics.linkedin}
@@ -1226,6 +1236,7 @@ export function DetailedResumeBuilder({
                             onChange={(e) =>
                               updateExperience(entry.id, "location", e.target.value)
                             }
+                            placeholder={t("jobLocationPlaceholder")}
                           />
                         </div>
                         <div>
