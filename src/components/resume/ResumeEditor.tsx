@@ -55,6 +55,7 @@ function emptyEducation(): Education {
   return {
     degree: "",
     institution: "",
+    specialization: "",
     location: "",
     graduationDate: "",
     gpa: "",
@@ -563,6 +564,19 @@ export function ResumeEditor({
                       onChange={(e) =>
                         updateEducation(i, { ...edu, degree: e.target.value })
                       }
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <Label>{t("educationSpecialization")}</Label>
+                    <Input
+                      value={edu.specialization || ""}
+                      onChange={(e) =>
+                        updateEducation(i, {
+                          ...edu,
+                          specialization: e.target.value,
+                        })
+                      }
+                      placeholder={t("educationSpecializationPlaceholder")}
                     />
                   </div>
                   <div className="min-w-0">

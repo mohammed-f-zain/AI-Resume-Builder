@@ -141,6 +141,7 @@ export function createEmptyEducation(): EducationEntry {
     id: crypto.randomUUID(),
     degree: "",
     institution: "",
+    specialization: "",
     location: "",
     graduationDate: "",
     gpa: "",
@@ -199,6 +200,7 @@ export function normalizeEducationEntries(
     id: e.id || crypto.randomUUID(),
     degree: e.degree ?? "",
     institution: e.institution ?? "",
+    specialization: e.specialization ?? "",
     location: e.location ?? "",
     graduationDate: e.graduationDate ?? "",
     gpa: e.gpa ?? "",
@@ -255,6 +257,7 @@ export const emptyBasics: ResumeBasics = {
   targetRole: "",
   careerBackground: "",
   photoDataUrl: "",
+  noEducation: false,
   experience: [],
   education: [],
   languages: [],
@@ -307,8 +310,11 @@ export function normalizeBasics(basics?: Partial<ResumeBasics>): ResumeBasics {
     targetRole: basics?.targetRole ?? "",
     careerBackground: basics?.careerBackground ?? "",
     photoDataUrl: basics?.photoDataUrl ?? "",
+    noEducation: !!basics?.noEducation,
     experience: normalizeExperience(basics?.experience),
-    education: normalizeEducationEntries(basics?.education),
+    education: basics?.noEducation
+      ? []
+      : normalizeEducationEntries(basics?.education),
     languages: normalizeLanguageEntries(basics?.languages),
     certificates: normalizeCertificateEntries(basics?.certificates),
     references: normalizeReferenceEntries(basics?.references),
@@ -422,8 +428,23 @@ export function isEducationComplete(entry: EducationEntry): boolean {
   );
 }
 
+/** Fresh to Med basics: degree, specialization, location, graduation date. */
+export function isGuidedEducationComplete(entry: EducationEntry): boolean {
+  return (
+    !!entry.degree.trim() &&
+    !!(entry.specialization || "").trim() &&
+    !!(entry.location || "").trim() &&
+    !!entry.graduationDate.trim()
+  );
+}
+
 export function hasValidEducation(basics: ResumeBasics): boolean {
   return basics.education.some(isEducationComplete);
+}
+
+export function hasValidGuidedEducation(basics: ResumeBasics): boolean {
+  if (basics.noEducation) return true;
+  return basics.education.some(isGuidedEducationComplete);
 }
 
 export function draftHasContent(draft: ResumeDraft): boolean {
@@ -436,7 +457,10 @@ export function draftHasContent(draft: ResumeDraft): boolean {
       (e) => e.position.trim() || e.company.trim()
     ) ||
     draft.basics.education.some(
-      (e) => e.degree.trim() || e.institution.trim()
+      (e) =>
+        e.degree.trim() ||
+        e.institution.trim() ||
+        (e.specialization || "").trim()
     ) ||
     draft.basics.languages.some((e) => e.language.trim()) ||
     draft.basics.certificates.some((e) => e.name.trim()) ||
@@ -454,7 +478,8 @@ export function hasValidGuidedBasics(basics: ResumeBasics): boolean {
     !!basics.fullName.trim() &&
     !!basics.email.trim() &&
     !!basics.targetRole.trim() &&
-    isValidInternationalPhone(basics.phone)
+    isValidInternationalPhone(basics.phone) &&
+    hasValidGuidedEducation(basics)
   );
 }
 
@@ -681,6 +706,7 @@ export function extractFromGuidedAnswers(
               id: g.id || crypto.randomUUID(),
               degree,
               institution,
+              specialization: (v.specialization || v.major || "").trim(),
               location,
               graduationDate: (v.graduationDate || v.endDate || "").trim(),
               gpa: (v.gpa || "").trim(),

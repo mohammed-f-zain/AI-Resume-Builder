@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getModel, getOpenAIClient } from "@/lib/openai";
 import type { GuidedAnswer, GuidedQuestion, ResumeBasics } from "@/lib/types";
 
-const CV_TOPICS = [
+const BASE_CV_TOPICS = [
   "work_experience",
   "education",
   "job_skills_tools",
@@ -12,7 +12,7 @@ const CV_TOPICS = [
   "years_or_seniority",
 ] as const;
 
-type CvTopic = (typeof CV_TOPICS)[number];
+type CvTopic = (typeof BASE_CV_TOPICS)[number];
 
 function summarizeAnswer(q: GuidedQuestion, a: GuidedAnswer | undefined): string {
   if (!a) return "(unanswered)";
@@ -86,6 +86,15 @@ Arabic quality rules:
       )
       .join(", ");
 
+    const educationAlreadyCovered =
+      !!basics.noEducation ||
+      (basics.education || []).some(
+        (e) => e.degree?.trim() || e.specialization?.trim()
+      );
+    const cvTopics = educationAlreadyCovered
+      ? BASE_CV_TOPICS.filter((t) => t !== "education")
+      : [...BASE_CV_TOPICS];
+
     const arabicQuestionExamples =
       language === "ar"
         ? `
@@ -110,13 +119,30 @@ Keep follow-up field labels in Arabic: جهة العمل، المسمى الوظ
 - Name: ${basics.fullName}
 - Location: ${basics.location || "(not set)"}
 - Spoken languages already collected: ${spokenLanguages || "(none)"}
+- Education on basics form: ${
+            basics.noEducation
+              ? "(user has no formal education — skip education questions)"
+              : basics.education?.some(
+                    (e) => e.degree?.trim() || e.specialization?.trim()
+                  )
+                ? JSON.stringify(
+                    basics.education.map((e) => ({
+                      degree: e.degree,
+                      specialization: e.specialization,
+                      institution: e.institution,
+                      location: e.location,
+                      graduationDate: e.graduationDate,
+                    }))
+                  )
+                : "(not filled yet)"
+          }
 
 ## Goal
 Ask the NEXT single multiple-choice / checkbox / yes-no question that best fills missing CV content for this exact profession.
 Questions must be practical and specific to "${basics.targetRole}" — never generic nonsense.
 
 ## CV topics to cover (ask until these are reasonably covered)
-${CV_TOPICS.map((t) => `- ${t}`).join("\n")}
+${cvTopics.map((t) => `- ${t}`).join("\n")}
 
 After enough coverage (typically 7–12 questions total), set "done": true.
 
@@ -129,7 +155,7 @@ ${history.length ? JSON.stringify(history, null, 2) : "(none yet — ask the fir
 3. Do NOT invent tech stacks for non-tech jobs (no React for plumbers; no pipe fittings for software engineers).
 4. Prefer concrete options a person in that field would recognize.
 5. For prior employment: yes_no with followUp fields company, position, location (city/country — always include this field), startDate, endDate (allowMultiple true). The UI adds "I currently work here" for endDate — do not invent fake end dates when current. If the user already filled experience on the basics form, you may skip re-asking full employment details.
-6. For education: yes_no or single_choice with followUp degree, institution, location (optional), graduationDate when useful.
+6. For education: skip if already provided on the basics form or user has no formal education. Otherwise yes_no with followUp degree, specialization, institution, location, graduationDate when useful.
 7. Ask ONE multi_choice for role core competencies (category "skills", topic job_skills_tools) and ONE for tools/tech/soft skills (category "technologies") when useful.
 8. Skip spoken languages if already provided.
 9. Ask about projects ONLY when relevant for the role. If not relevant, skip — never invent project questions.

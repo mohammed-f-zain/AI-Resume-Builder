@@ -67,6 +67,7 @@ export function buildTemplatePreviewResume(
       .filter((e) => e.degree?.trim() || e.institution?.trim())
       .map((e) => ({
         degree: e.degree || (isAr ? "الدرجة" : "Degree"),
+        specialization: e.specialization || undefined,
         institution: e.institution || (isAr ? "المؤسسة" : "Institution"),
         location: e.location || undefined,
         graduationDate: e.graduationDate || "",

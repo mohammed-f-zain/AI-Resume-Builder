@@ -40,6 +40,7 @@ import type {
   GuidedAnswer,
   LanguageEntry,
   ExperienceEntry,
+  EducationEntry,
   ATSAnalysis,
 } from "@/lib/types";
 import {
@@ -49,6 +50,7 @@ import {
   languageProficiencyLabel,
   createEmptyLanguage,
   createEmptyExperience,
+  createEmptyEducation,
   currentYearMonth,
   isMonthNotInFuture,
   deleteDraft,
@@ -159,6 +161,21 @@ function preferBasicsExperience(
     (e) => e.position.trim() || e.company.trim()
   );
   return hasExtracted ? extractedExp : basicsExp;
+}
+
+function preferBasicsEducation(
+  basics: ResumeBasics,
+  extractedEdu: EducationEntry[]
+): EducationEntry[] {
+  if (basics.noEducation) return [];
+  const hasBasics = basics.education.some(
+    (e) =>
+      e.degree.trim() ||
+      (e.specialization || "").trim() ||
+      e.institution.trim()
+  );
+  if (hasBasics) return basics.education;
+  return extractedEdu.length ? extractedEdu : basics.education;
 }
 
 export function GuidedResumeBuilder({
@@ -301,6 +318,63 @@ export function GuidedResumeBuilder({
     });
   };
 
+  const setNoEducation = (value: boolean) => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        noEducation: value,
+        education: value ? [] : [createEmptyEducation()],
+      }),
+    }));
+  };
+
+  const updateEducation = (
+    id: string,
+    field: keyof EducationEntry,
+    value: string
+  ) => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        noEducation: false,
+        education: d.basics.education.map((e) =>
+          e.id === id ? { ...e, [field]: value } : e
+        ),
+      }),
+    }));
+  };
+
+  const addEducation = () => {
+    patchDraft((d) => ({
+      ...d,
+      basics: normalizeBasics({
+        ...d.basics,
+        noEducation: false,
+        education: [
+          ...(d.basics.education.length
+            ? d.basics.education
+            : []),
+          createEmptyEducation(),
+        ],
+      }),
+    }));
+  };
+
+  const removeEducation = (id: string) => {
+    patchDraft((d) => {
+      const next = d.basics.education.filter((e) => e.id !== id);
+      return {
+        ...d,
+        basics: normalizeBasics({
+          ...d.basics,
+          education: next.length ? next : [createEmptyEducation()],
+        }),
+      };
+    });
+  };
+
   const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => {
     patchDraft((d) => ({
       ...d,
@@ -375,9 +449,7 @@ export function GuidedResumeBuilder({
               d.basics.experience,
               extracted.experience
             ),
-            education: extracted.education.length
-              ? extracted.education
-              : d.basics.education,
+            education: preferBasicsEducation(d.basics, extracted.education),
             references: extracted.references.length
               ? extracted.references
               : d.basics.references,
@@ -494,9 +566,7 @@ export function GuidedResumeBuilder({
           d.basics.experience,
           extracted.experience
         ),
-        education: extracted.education.length
-          ? extracted.education
-          : d.basics.education,
+        education: preferBasicsEducation(d.basics, extracted.education),
         references: extracted.references.length
           ? extracted.references
           : d.basics.references,
@@ -525,9 +595,7 @@ export function GuidedResumeBuilder({
           basics.experience,
           extracted.experience
         ),
-        education: extracted.education.length
-          ? extracted.education
-          : basics.education,
+        education: preferBasicsEducation(basics, extracted.education),
         references: extracted.references.length
           ? extracted.references
           : basics.references,
@@ -1147,6 +1215,137 @@ export function GuidedResumeBuilder({
                     <Plus className="h-4 w-4" />
                     {t("addExperience")}
                   </Button>
+                </div>
+
+                <div className="space-y-3 border-t border-[#e2e8f0] pt-4">
+                  <div>
+                    <Label className="text-base">{t("education")} *</Label>
+                    <p className="mt-1 text-xs text-[#6b7c93]">
+                      {t("guidedEducationHint")}
+                    </p>
+                  </div>
+                  <label className="flex items-start gap-2 rounded-xl border border-[#e2e8f0] bg-white px-3 py-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={!!basics.noEducation}
+                      onChange={(e) => setNoEducation(e.target.checked)}
+                    />
+                    <span>{t("noEducationOption")}</span>
+                  </label>
+                  {!basics.noEducation && (
+                    <>
+                      {basics.education.map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          className="space-y-3 rounded-xl border border-[#e2e8f0] bg-[#f4f7fa]/50 p-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-[#002b49]">
+                              {t("education")} {index + 1}
+                            </span>
+                            {basics.education.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeEducation(entry.id)}
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                {t("removeEducation")}
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <Label>{t("educationDegree")} *</Label>
+                              <Input
+                                value={entry.degree}
+                                onChange={(e) =>
+                                  updateEducation(
+                                    entry.id,
+                                    "degree",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder={t("educationDegreePlaceholder")}
+                              />
+                            </div>
+                            <div>
+                              <Label>{t("educationSpecialization")} *</Label>
+                              <Input
+                                value={entry.specialization || ""}
+                                onChange={(e) =>
+                                  updateEducation(
+                                    entry.id,
+                                    "specialization",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder={t(
+                                  "educationSpecializationPlaceholder"
+                                )}
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Label>{t("educationInstitution")}</Label>
+                              <Input
+                                value={entry.institution}
+                                onChange={(e) =>
+                                  updateEducation(
+                                    entry.id,
+                                    "institution",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder={t(
+                                  "educationInstitutionPlaceholder"
+                                )}
+                              />
+                            </div>
+                            <div>
+                              <Label>{t("educationLocation")} *</Label>
+                              <Input
+                                value={entry.location || ""}
+                                onChange={(e) =>
+                                  updateEducation(
+                                    entry.id,
+                                    "location",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder={t("educationLocationPlaceholder")}
+                              />
+                            </div>
+                            <div>
+                              <Label>{t("educationGraduation")} *</Label>
+                              <Input
+                                type="month"
+                                value={toMonthInputValue(entry.graduationDate)}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (!isMonthNotInFuture(v)) return;
+                                  updateEducation(
+                                    entry.id,
+                                    "graduationDate",
+                                    v
+                                  );
+                                }}
+                                max={currentYearMonth()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addEducation}
+                      >
+                        <Plus className="h-4 w-4" />
+                        {t("addEducation")}
+                      </Button>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-3 border-t border-[#e2e8f0] pt-4">

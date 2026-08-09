@@ -31,6 +31,8 @@ export interface Experience {
 export interface Education {
   degree: string;
   institution: string;
+  /** Field of study / specialization (e.g. Nursing). */
+  specialization?: string;
   location?: string;
   graduationDate: string;
   gpa?: string;
@@ -145,6 +147,8 @@ export interface EducationEntry {
   id: string;
   degree: string;
   institution: string;
+  /** Field of study / specialization (e.g. Nursing). */
+  specialization?: string;
   /** Optional city / country shown under education. */
   location?: string;
   graduationDate: string;
@@ -191,6 +195,11 @@ export interface ResumeBasics {
   careerBackground: string;
   /** Optional personal photo (data URL) to place on the generated CV. */
   photoDataUrl?: string;
+  /**
+   * Fresh to Med: user has no formal education/certification.
+   * When true, education is not required and omitted from the CV.
+   */
+  noEducation?: boolean;
   experience: ExperienceEntry[];
   education: EducationEntry[];
   languages: LanguageEntry[];

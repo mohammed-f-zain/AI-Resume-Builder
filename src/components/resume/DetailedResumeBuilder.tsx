@@ -1344,6 +1344,22 @@ export function DetailedResumeBuilder({
                           />
                         </div>
                         <div>
+                          <Label>{t("educationSpecialization")}</Label>
+                          <Input
+                            value={entry.specialization || ""}
+                            onChange={(e) =>
+                              updateEducation(
+                                entry.id,
+                                "specialization",
+                                e.target.value
+                              )
+                            }
+                            placeholder={t(
+                              "educationSpecializationPlaceholder"
+                            )}
+                          />
+                        </div>
+                        <div>
                           <Label>{t("educationInstitution")} *</Label>
                           <Input
                             value={entry.institution}

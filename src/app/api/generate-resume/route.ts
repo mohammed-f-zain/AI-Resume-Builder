@@ -80,9 +80,13 @@ export async function POST(request: Request) {
     const experienceEntries = (basics.experience || []).filter(
       (e) => e.position?.trim() && e.company?.trim()
     );
-    const educationEntries = (basics.education || []).filter(
-      (e) => e.degree?.trim() && e.institution?.trim()
-    );
+    const educationEntries = basics.noEducation
+      ? []
+      : (basics.education || []).filter(
+          (e) =>
+            e.degree?.trim() &&
+            (e.institution?.trim() || e.specialization?.trim())
+        );
     const languageEntries = (basics.languages || []).filter((e) =>
       e.language?.trim()
     );
@@ -142,9 +146,9 @@ ${skillsList.length ? skillsList.map((s) => `- ${s}`).join("\n") : "- (derive ca
 ${educationEntries
   .map(
     (e) =>
-      `- ${e.degree} at ${e.institution}${e.location?.trim() ? `, ${e.location.trim()}` : ""} (${e.graduationDate})${e.gpa ? ` GPA: ${e.gpa}` : ""}`
+      `- ${e.degree}${e.specialization?.trim() ? ` in ${e.specialization.trim()}` : ""}${e.institution?.trim() ? ` at ${e.institution.trim()}` : ""}${e.location?.trim() ? `, ${e.location.trim()}` : ""} (${e.graduationDate})${e.gpa ? ` GPA: ${e.gpa}` : ""}`
   )
-  .join("\n") || "- (see basics.education)"}
+  .join("\n") || (basics.noEducation ? "- (none — user has no formal education)" : "- (see basics.education)")}
 
 6. Licenses & Certifications — use provided names:
 ${certificateEntries.map((c) => `- ${c.name}`).join("\n") || "- (none provided)"}
@@ -184,7 +188,7 @@ Return JSON:
   },
   "experience": [{ "title", "company", "location?", "startDate", "endDate", "current?", "bullets": [] }],
   "projects": [],
-  "education": [{ "degree", "institution", "location?", "graduationDate", "gpa?" }],
+  "education": [{ "degree", "specialization?", "institution", "location?", "graduationDate", "gpa?" }],
   "certifications": [{ "name": "...", "url": null }],
   "courses": [],
   "languages": [],
@@ -249,9 +253,12 @@ Return JSON:
       }
     }
 
-    if (educationEntries.length) {
+    if (basics.noEducation) {
+      resumeData.education = [];
+    } else if (educationEntries.length) {
       resumeData.education = educationEntries.map((e) => ({
         degree: e.degree.trim(),
+        specialization: e.specialization?.trim() || undefined,
         institution: e.institution.trim(),
         location: e.location?.trim() || undefined,
         graduationDate: e.graduationDate,

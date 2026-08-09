@@ -184,8 +184,8 @@ Default order (editable in Resume Editor via drag-and-drop):
 5. “Change writing mode” sets `mode: null`, `step: "mode"` (normalizeDraft must **not** re-infer mode when on picker)
 
 ### Mode A — Fresh to Med - Level (guided)
-1. Basics — contact (phone required international `+`/`00`), LinkedIn optional, optional photo, target job, **Experience** (position, company, **location**, dates), optional languages  
-2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups (job location, “I currently work here”, end date not in future) + Other  
+1. Basics — contact (phone required international `+`/`00`), LinkedIn optional, optional photo, target job, **Experience** (position, company, **location**, dates), **Education** (degree, specialization, location, graduation date; or “no formal education”), optional languages  
+2. Choice interview — sequential MCQ/yes-no/checkboxes + follow-ups (job location, “I currently work here”, end date not in future) + Other; skips education if already filled / no-education  
 3. After interview is finished, revisiting **AI Interview** shows **all Q&A** in editable review mode  
 4. Template → generate → **auto ATS polish** (`/api/polish-resume`) → Preview (Edit with Done/Cancel; optional re-score; Download PDF)  
 5. Projects section only if a projects topic was asked
@@ -212,6 +212,11 @@ Default order (editable in Resume Editor via drag-and-drop):
 - CV text via `formatLanguageEntry(..., locale)`
 
 ## Changelog
+
+### 2026-08-09 — Fresh to Med: mandatory Education on basics
+- Basics form: Education before AI questions — degree, specialization, location, graduation date (institution optional)
+- Checkbox: no formal education / academic certificates (`basics.noEducation` → empty education on CV)
+- Guided interview skips re-asking education when already covered; `specialization` on Education type + templates
 
 ### 2026-08-09 — CV structure: header + section order
 - Header: name, roles, top 3 skills, nationality/location/phone/email, LinkedIn icon

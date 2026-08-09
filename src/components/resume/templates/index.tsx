@@ -558,6 +558,10 @@ function EducationSection({
     <section className={sectionClass}>
       <Heading>{labels.education}</Heading>
       {data.education.map((edu, i) => {
+        const title = [edu.degree, edu.specialization]
+          .map((s) => (s || "").trim())
+          .filter(Boolean)
+          .join(" in ");
         const institutionPart = [edu.institution, edu.location]
           .filter(Boolean)
           .join(", ");
@@ -567,7 +571,9 @@ function EducationSection({
         return (
           <div key={i} className={entryClass}>
             <p className={bodyTextClass}>
-              <span className="font-bold text-black">{edu.degree}</span>
+              <span className="font-bold text-black">
+                {title || edu.degree}
+              </span>
               {institutionPart ? ` - ${institutionPart}` : ""}
               {years}
               {edu.gpa ? ` | GPA: ${edu.gpa}` : ""}
